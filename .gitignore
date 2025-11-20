@@ -9,6 +9,7 @@ yarn-error.log*
 client/build/
 baty-car-app/.next/
 baty-car-app/out/
+baty-car-app/
 
 # Local env
 .env
