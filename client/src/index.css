@@ -1,0 +1,87 @@
+:root {
+  --blue: #1e6fe6;
+  --bg: #eef3fb;
+  --text: #0f1a2b;
+  --muted: #5b6b84;
+  --card: #ffffff;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: 'Inter', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--blue);
+  margin-bottom: 24px;
+}
+
+.card {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: 0 6px 24px rgba(30, 111, 230, 0.08);
+  padding: 16px;
+}
+
+.row { display: flex; gap: 16px; align-items: flex-start; }
+.col { flex: 1; }
+
+.button {
+  appearance: none;
+  border: none;
+  background: var(--blue);
+  color: white;
+  padding: 12px 16px;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button.secondary { background: #2d7df0; }
+.button.muted { background: #8aaef5; }
+
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td { padding: 12px; border-bottom: 1px solid #e7eefb; }
+.table th { text-align: left; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.table td { font-size: 14px; }
+
+.actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
+
+.actions-center { display: flex; gap: 10px; justify-content: center; margin-top: 12px; }
+.badge { background: #1e6fe6; color: #fff; border-radius: 999px; padding: 6px 12px; font-weight: 600; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.chip { background: #eef4ff; color: #1e6fe6; padding: 4px 8px; border-radius: 999px; font-weight: 500; }
+
+.video {
+  width: 100%;
+  border-radius: 12px;
+  background: #000;
+}
+
+.video-wrap { position: relative; }
+.overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.frame { width: 80%; height: 30%; border: 3px dashed var(--blue); border-radius: 12px; box-shadow: 0 0 0 2000px rgba(15, 26, 43, 0.18); }
+
+/* removed icon-button */
+
+@media (max-width: 768px) {
+  .container { padding: 12px; }
+  .title { font-size: 22px; margin-bottom: 16px; text-align: center; }
+  .row { flex-direction: column; }
+  .button { padding: 14px 18px; font-size: 16px; }
+  .actions, .actions-center { flex-wrap: wrap; justify-content: center; }
+  .table th, .table td { padding: 10px; }
+}
+.file-input { display: none; }

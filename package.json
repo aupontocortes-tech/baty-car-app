@@ -1,0 +1,24 @@
+{
+  "name": "openalpr-car-plate-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "server": "node server/index.js",
+    "client": "cd client && react-scripts start",
+    "build": "cd client && react-scripts build",
+    "dev": "concurrently \"npm run server\" \"npm run client\""
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "xlsx": "^0.18.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "react-scripts": "5.0.1"
+  }
+}
