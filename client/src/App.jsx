@@ -8,7 +8,7 @@ export default function App() {
   const minConfidence = 0
   const seen = useMemo(() => new Set(records.map(r => r.plate)), [records])
   const lastPlates = useMemo(() => records.slice(0, 5).map(r => r.plate), [records])
-  const API_BASE = (process && process.env && process.env.REACT_APP_API_BASE) ? String(process.env.REACT_APP_API_BASE).replace(/\/+$/,'') : ''
+  const API_BASE = (process.env.REACT_APP_API_BASE || '').replace(/\/+$/,'')
   const [debugInfo, setDebugInfo] = useState(null)
   const debug = /[?&]debug=1/.test(window.location.search) || (typeof localStorage !== 'undefined' && localStorage.getItem('DEBUG') === '1')
   const [excelHandle, setExcelHandle] = useState(null)
