@@ -8,6 +8,7 @@ export default function App() {
   const minConfidence = 0
   const seen = useMemo(() => new Set(records.map(r => r.plate)), [records])
   const lastPlates = useMemo(() => records.slice(0, 5).map(r => r.plate), [records])
+  const API_BASE = (process && process.env && process.env.REACT_APP_API_BASE) ? String(process.env.REACT_APP_API_BASE).replace(/\/+$/,'') : ''
   const [debugInfo, setDebugInfo] = useState(null)
   const debug = /[?&]debug=1/.test(window.location.search) || (typeof localStorage !== 'undefined' && localStorage.getItem('DEBUG') === '1')
   const [excelHandle, setExcelHandle] = useState(null)
@@ -142,7 +143,7 @@ export default function App() {
     if (!uploadFile) return
     const fd = new FormData()
     fd.append('frame', uploadFile)
-    const resp = await fetch('/api/recognize?region=br', { method: 'POST', body: fd })
+    const resp = await fetch(`${API_BASE}/api/recognize?region=br`, { method: 'POST', body: fd })
     const data = await resp.json()
     if (data && data.error) setErrorMsg(`Erro no reconhecimento: ${String(data.error)} ${String(data.detail || '')}`)
     const plates = Array.isArray(data.plates) ? data.plates : []
@@ -167,7 +168,7 @@ export default function App() {
     const u = String(testUrl || '').trim()
     if (!u) return
     try {
-      const resp = await fetch(`/api/recognize-url?region=br&url=${encodeURIComponent(u)}`)
+      const resp = await fetch(`${API_BASE}/api/recognize-url?region=br&url=${encodeURIComponent(u)}`)
       const data = await resp.json()
       if (data && data.error) setErrorMsg(`Erro no reconhecimento: ${String(data.error)} ${String(data.detail || '')}`)
       const plates = Array.isArray(data.plates) ? data.plates : []

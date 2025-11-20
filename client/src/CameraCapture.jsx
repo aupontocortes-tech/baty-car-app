@@ -79,7 +79,9 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       fd.append('frame', file)
       let data
       try {
-        const resp = await fetch('/api/recognize?region=br', {
+        const base = (process && process.env && process.env.REACT_APP_API_BASE) ? String(process.env.REACT_APP_API_BASE).replace(/\/+$/,'') : ''
+        const url = `${base}/api/recognize?region=br`
+        const resp = await fetch(url, {
           method: 'POST',
           body: fd
         })
