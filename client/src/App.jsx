@@ -15,7 +15,6 @@ export default function App() {
   const [stats, setStats] = useState({ total: 0, byPlate: {} })
   const [errorMsg, setErrorMsg] = useState('')
   const [manualPlate, setManualPlate] = useState('')
-  const [apiBase, setApiBase] = useState(() => (typeof localStorage !== 'undefined' && localStorage.getItem('API_BASE')) || '')
   const [installEvt, setInstallEvt] = useState(null)
 
 
@@ -164,12 +163,7 @@ export default function App() {
               }}
             />
           </div>
-          <div className="card" style={{ marginTop: 12 }}>
-            <div className="actions-center" style={{ gap: 8 }}>
-              <input type="text" placeholder="API Base (ex: https://seu-backend.com)" value={apiBase} onChange={e => setApiBase(e.target.value)} style={{ flex: 1, minWidth: 260 }} />
-              <button className="button" onClick={saveApiBase}>Salvar API</button>
-            </div>
-          </div>
+          {/* removed API Base UI */}
           <div className="card" style={{ marginTop: 12 }}>
             <div className="actions-center">
               <button className="button" onClick={downloadExcel}>Baixar Excel (.xlsx)</button>
@@ -249,13 +243,6 @@ export default function App() {
     </div>
   )
 }
-  const saveApiBase = () => {
-    try {
-      const v = String(apiBase || '').trim()
-      if (typeof localStorage !== 'undefined') localStorage.setItem('API_BASE', v)
-      setErrorMsg('')
-    } catch (_e) {}
-  }
 
   const promptInstall = async () => {
     try {
