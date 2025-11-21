@@ -77,17 +77,27 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       if (!canvas) return
       const targetW = Math.min(960, w)
       const targetH = Math.round(targetW * (h / w))
-      canvas.width = targetW
-      canvas.height = targetH
+      const cropW = Math.round(targetW * 0.7)
+      const cropH = Math.round(targetH * 0.45)
+      const cropX = Math.round((targetW - cropW) / 2)
+      const cropY = Math.round((targetH - cropH) / 2)
       const ctx = canvas.getContext('2d')
+      canvas.width = cropW
+      canvas.height = cropH
       ctx.drawImage(video, 0, 0, targetW, targetH)
+      const frame = ctx.getImageData(cropX, cropY, cropW, cropH)
+      const frameCanvas = document.createElement('canvas')
+      frameCanvas.width = cropW
+      frameCanvas.height = cropH
+      const fctx = frameCanvas.getContext('2d')
+      fctx.putImageData(frame, 0, 0)
       const applyProc = true
       if (applyProc) {
         try {
-          const img = ctx.getImageData(0, 0, w, h)
+          const img = fctx.getImageData(0, 0, cropW, cropH)
           const data = img.data
-          const contrast = 60
-          const brightness = 12
+          const contrast = 50
+          const brightness = 10
           const factor = (259 * (contrast + 255)) / (255 * (259 - contrast))
           for (let i = 0; i < data.length; i += 4) {
             let r = data[i]
@@ -99,10 +109,10 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
             v = v < 0 ? 0 : (v > 255 ? 255 : v)
             data[i] = data[i + 1] = data[i + 2] = v
           }
-          ctx.putImageData(img, 0, 0)
+          fctx.putImageData(img, 0, 0)
         } catch (_e) {}
       }
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9))
+      const blob = await new Promise(resolve => frameCanvas.toBlob(resolve, 'image/jpeg', 0.9))
       const file = new File([blob], 'frame.jpg', { type: 'image/jpeg' })
       const fd = new FormData()
       fd.append('frame', file)
