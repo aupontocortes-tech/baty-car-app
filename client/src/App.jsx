@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import CameraCapture from './CameraCapture'
 import ResultsTable from './ResultsTable'
-import * as XLSX from 'xlsx'
+ 
 
 export default function App() {
   const [records, setRecords] = useState([])
@@ -106,25 +106,28 @@ export default function App() {
 
   const [uploadFile, setUploadFile] = useState(null)
 
-  const downloadExcel = () => {
-    const header = ["Placa", "DataHora"]
-    const rows = records.map(r => [r.plate, r.timestamp])
-    const ws = XLSX.utils.aoa_to_sheet([header, ...rows, [], ["Total lidas", records.length]])
-    ws['!cols'] = [
-      { wch: 16 },
-      { wch: 24 }
-    ]
-    ws['!autofilter'] = { ref: 'A1:B1' }
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Leituras')
-    if (excelHandle) {
-      const data = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
-      excelHandle.createWritable().then(w => w.write(data).then(() => w.close())).catch(() => {
+  const downloadExcel = async () => {
+    try {
+      const XLSX = await import('xlsx')
+      const header = ["Placa", "DataHora"]
+      const rows = records.map(r => [r.plate, r.timestamp])
+      const ws = XLSX.utils.aoa_to_sheet([header, ...rows, [], ["Total lidas", records.length]])
+      ws['!cols'] = [
+        { wch: 16 },
+        { wch: 24 }
+      ]
+      ws['!autofilter'] = { ref: 'A1:B1' }
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Leituras')
+      if (excelHandle) {
+        const data = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
+        excelHandle.createWritable().then(w => w.write(data).then(() => w.close())).catch(() => {
+          XLSX.writeFile(wb, 'leituras-placas.xlsx')
+        })
+      } else {
         XLSX.writeFile(wb, 'leituras-placas.xlsx')
-      })
-    } else {
-      XLSX.writeFile(wb, 'leituras-placas.xlsx')
-    }
+      }
+    } catch (_e) {}
   }
 
   const handlePrint = () => {
@@ -138,6 +141,10 @@ export default function App() {
     }, 1500)
     return () => clearTimeout(t)
   }, [records])
+
+  useEffect(() => {
+    try { console.log('app-mounted') } catch (_e) {}
+  }, [])
 
   const handleUpload = async () => {
     if (!uploadFile) return

@@ -6,3 +6,4 @@ import './index.css'
 const container = document.getElementById('root')
 const root = createRoot(container)
 root.render(<App />)
+try { console.log('render-start') } catch (_e) {}
