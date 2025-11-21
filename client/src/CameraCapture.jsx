@@ -9,6 +9,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
   const [active, setActive] = useState(false)
   const [status, setStatus] = useState('aguardando')
   const [procToggle, setProcToggle] = useState(false)
+  const [torchMode, setTorchMode] = useState('auto') // 'auto' | 'on' | 'off'
 
   const start = async () => {
     if (ready) {
@@ -31,7 +32,26 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
           const t = stream.getVideoTracks && stream.getVideoTracks()[0]
           const caps = t && t.getCapabilities && t.getCapabilities()
           if (caps && caps.torch) {
-            t.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {})
+            if (torchMode === 'on') t.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {})
+            if (torchMode === 'off') t.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {})
+            if (torchMode === 'auto') {
+              setTimeout(() => {
+                try {
+                  const w = videoRef.current.videoWidth || 640
+                  const h = videoRef.current.videoHeight || 480
+                  const c = document.createElement('canvas')
+                  c.width = 160; c.height = Math.round(160 * (h / w))
+                  const cx = c.getContext('2d')
+                  cx.drawImage(videoRef.current, 0, 0, c.width, c.height)
+                  const img = cx.getImageData(0, 0, c.width, c.height)
+                  const data = img.data
+                  let sum = 0; let count = 0
+                  for (let i = 0; i < data.length; i += 4) { sum += data[i] + data[i+1] + data[i+2]; count++ }
+                  const avg = sum / (count * 3)
+                  if (avg < 80) t.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {})
+                } catch (_e) {}
+              }, 250)
+            }
           }
         } catch (_e) {}
         setReady(true)
@@ -88,7 +108,8 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       fd.append('frame', file)
       let data
       try {
-        const url = `/api/recognize?region=br`
+        const base = (process.env.REACT_APP_API_BASE || '').replace(/\/+$/,'')
+        const url = `${base}/api/recognize?region=br`
         const resp = await fetch(url, {
           method: 'POST',
           body: fd
@@ -172,6 +193,14 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         <button className="button" onClick={active ? stop : start} disabled={!active && busy}>
           {active ? 'Parar Leitura' : 'Ler Placas'}
         </button>
+        <label className="button secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          Flash:
+          <select value={torchMode} onChange={e => setTorchMode(e.target.value)} style={{ marginLeft: 6 }}>
+            <option value="auto">Auto</option>
+            <option value="on">Ligado</option>
+            <option value="off">Desligado</option>
+          </select>
+        </label>
       </div>
       {!active && (
         <div style={{ marginTop: 10, textAlign: 'center', color: '#5b6b84', fontSize: 14 }}>
