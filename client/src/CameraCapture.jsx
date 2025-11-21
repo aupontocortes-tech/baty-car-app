@@ -47,40 +47,39 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const h = video.videoHeight || 480
       const canvas = canvasRef.current
       if (!canvas) return
-      const cropW = Math.round(w * 0.6)
-      const cropH = Math.round(h * 0.4)
-      const cropX = Math.round((w - cropW) / 2)
-      const cropY = Math.round((h - cropH) / 2)
-      canvas.width = cropW
-      canvas.height = cropH
+      const targetW = Math.min(960, w)
+      const targetH = Math.round(targetW * (h / w))
+      canvas.width = targetW
+      canvas.height = targetH
       const ctx = canvas.getContext('2d')
-      ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH)
-      try {
-        const img = ctx.getImageData(0, 0, cropW, cropH)
-        const data = img.data
-        const contrast = 40
-        const brightness = 10
-        const factor = (259 * (contrast + 255)) / (255 * (259 - contrast))
-        for (let i = 0; i < data.length; i += 4) {
-          let r = data[i]
-          let g = data[i + 1]
-          let b = data[i + 2]
-          const gray = (0.2126 * r + 0.7152 * g + 0.0722 * b)
-          let v = gray
-          v = factor * (v - 128) + 128 + brightness
-          v = v < 0 ? 0 : (v > 255 ? 255 : v)
-          data[i] = data[i + 1] = data[i + 2] = v
-        }
-        ctx.putImageData(img, 0, 0)
-      } catch (_e) {}
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95))
+      ctx.drawImage(video, 0, 0, targetW, targetH)
+      if (previewProcessed) {
+        try {
+          const img = ctx.getImageData(0, 0, w, h)
+          const data = img.data
+          const contrast = 40
+          const brightness = 10
+          const factor = (259 * (contrast + 255)) / (255 * (259 - contrast))
+          for (let i = 0; i < data.length; i += 4) {
+            let r = data[i]
+            let g = data[i + 1]
+            let b = data[i + 2]
+            const gray = (0.2126 * r + 0.7152 * g + 0.0722 * b)
+            let v = gray
+            v = factor * (v - 128) + 128 + brightness
+            v = v < 0 ? 0 : (v > 255 ? 255 : v)
+            data[i] = data[i + 1] = data[i + 2] = v
+          }
+          ctx.putImageData(img, 0, 0)
+        } catch (_e) {}
+      }
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85))
       const file = new File([blob], 'frame.jpg', { type: 'image/jpeg' })
       const fd = new FormData()
       fd.append('frame', file)
       let data
       try {
-        const base = (process.env.REACT_APP_API_BASE || '').replace(/\/+$/,'')
-        const url = `${base}/api/recognize?region=br`
+        const url = `/api/recognize?region=br`
         const resp = await fetch(url, {
           method: 'POST',
           body: fd
@@ -117,7 +116,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
     if (!timerRef.current) {
       timerRef.current = setInterval(() => {
         if (!busy) capture()
-      }, 800)
+      }, 350)
     }
     return () => {
       if (timerRef.current) {
@@ -132,6 +131,10 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const s = videoRef.current && videoRef.current.srcObject
       if (s && s.getTracks) s.getTracks().forEach(t => t.stop())
     }
+  }, [])
+
+  useEffect(() => {
+    start()
   }, [])
 
 

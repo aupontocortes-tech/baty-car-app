@@ -32,7 +32,7 @@ const upload = multer({ storage })
 
 const runAlpr = (filePath, region) => new Promise((resolve, reject) => {
   const bin = process.env.ALPR_BIN || 'alpr'
-  const cmd = `${bin} --detect_region -n 20 -c ${region} -j "${filePath}"`
+  const cmd = `${bin} --detect_region -n 5 -c ${region} -j "${filePath}"`
   exec(cmd, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
     if (error) {
       reject({ error: 'alpr_failed', detail: String(stderr || error.message) })
@@ -88,14 +88,7 @@ app.post('/api/recognize', upload.single('frame'), async (req, res) => {
         }))
       : []
   }))
-  let imageFile = null
-  if (plates.length > 0) {
-    const best = plates[0]
-    const name = `${Date.now()}_${best.plate}.jpg`
-    const dest = path.join(recognizedDir, name)
-    try { fs.copyFileSync(filePath, dest); imageFile = `uploads/recognized/${name}` } catch (_e) {}
-  }
-  res.json({ plates, imageFile, meta: { processing_time_ms: parsed.processing_time_ms || null, regionTried: order } })
+  res.json({ plates, imageFile: null, meta: { processing_time_ms: parsed.processing_time_ms || null, regionTried: order } })
 })
 
 const downloadToFile = (fileUrl, destPath) => new Promise((resolve, reject) => {
