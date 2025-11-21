@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react'
 export default function CameraCapture({ onRecognize, onRaw, onError, previewProcessed }) {
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
+  const trackRef = useRef(null)
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const timerRef = useRef(null)
@@ -10,6 +11,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
   const [status, setStatus] = useState('aguardando')
   const [procToggle, setProcToggle] = useState(false)
   const [torchMode, setTorchMode] = useState('auto') // 'auto' | 'on' | 'off'
+  const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent)
 
   const start = async () => {
     if (ready) {
@@ -30,6 +32,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         await videoRef.current.play()
         try {
           const t = stream.getVideoTracks && stream.getVideoTracks()[0]
+          trackRef.current = t || null
           const caps = t && t.getCapabilities && t.getCapabilities()
           if (caps && caps.torch) {
             if (torchMode === 'on') t.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {})
@@ -73,24 +76,22 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const video = videoRef.current
       const w = video.videoWidth || 640
       const h = video.videoHeight || 480
-      const canvas = canvasRef.current
-      if (!canvas) return
       const targetW = Math.min(960, w)
       const targetH = Math.round(targetW * (h / w))
+      const srcCanvas = document.createElement('canvas')
+      srcCanvas.width = targetW
+      srcCanvas.height = targetH
+      const sctx = srcCanvas.getContext('2d')
+      sctx.drawImage(video, 0, 0, targetW, targetH)
       const cropW = Math.round(targetW * 0.7)
       const cropH = Math.round(targetH * 0.45)
       const cropX = Math.round((targetW - cropW) / 2)
       const cropY = Math.round((targetH - cropH) / 2)
-      const ctx = canvas.getContext('2d')
-      canvas.width = cropW
-      canvas.height = cropH
-      ctx.drawImage(video, 0, 0, targetW, targetH)
-      const frame = ctx.getImageData(cropX, cropY, cropW, cropH)
       const frameCanvas = document.createElement('canvas')
       frameCanvas.width = cropW
       frameCanvas.height = cropH
       const fctx = frameCanvas.getContext('2d')
-      fctx.putImageData(frame, 0, 0)
+      fctx.drawImage(srcCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH)
       const applyProc = true
       if (applyProc) {
         try {
@@ -118,7 +119,8 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       fd.append('frame', file)
       let data
       try {
-        const base = (process.env.REACT_APP_API_BASE || '').replace(/\/+$/,'')
+        const runtimeBase = (typeof localStorage !== 'undefined' && localStorage.getItem('API_BASE')) || process.env.REACT_APP_API_BASE || ''
+        const base = runtimeBase.replace(/\/+$/,'')
         const url = `${base}/api/recognize?region=br`
         const resp = await fetch(url, {
           method: 'POST',
@@ -174,9 +176,36 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
   }, [])
 
   useEffect(() => {
-    start()
+    if (!isIOS) start()
   }, [])
 
+
+  useEffect(() => {
+    const t = trackRef.current
+    try {
+      const caps = t && t.getCapabilities && t.getCapabilities()
+      if (!caps || !caps.torch) return
+      if (torchMode === 'on') t.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {})
+      else if (torchMode === 'off') t.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {})
+      else {
+        const w = videoRef.current && videoRef.current.videoWidth || 0
+        const h = videoRef.current && videoRef.current.videoHeight || 0
+        if (w && h) {
+          const c = document.createElement('canvas')
+          c.width = 160; c.height = Math.round(160 * (h / w))
+          const cx = c.getContext('2d')
+          cx.drawImage(videoRef.current, 0, 0, c.width, c.height)
+          const img = cx.getImageData(0, 0, c.width, c.height)
+          const data = img.data
+          let sum = 0; let count = 0
+          for (let i = 0; i < data.length; i += 4) { sum += data[i] + data[i+1] + data[i+2]; count++ }
+          const avg = sum / (count * 3)
+          if (avg < 80) t.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {})
+          else t.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {})
+        }
+      }
+    } catch (_e) {}
+  }, [torchMode])
 
   const stop = () => {
     setActive(false)
@@ -211,6 +240,8 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
             <option value="off">Desligado</option>
           </select>
         </label>
+        <button className="button" onClick={() => setTorchMode('on')}>Ligar Flash</button>
+        <button className="button" onClick={() => setTorchMode('off')}>Desligar Flash</button>
       </div>
       {!active && (
         <div style={{ marginTop: 10, textAlign: 'center', color: '#5b6b84', fontSize: 14 }}>
