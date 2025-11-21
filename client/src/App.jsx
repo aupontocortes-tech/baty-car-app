@@ -5,7 +5,7 @@ import ResultsTable from './ResultsTable'
 
 export default function App() {
   const [records, setRecords] = useState([])
-  const minConfidence = 65
+  const minConfidence = 60
   const seen = useMemo(() => new Set(records.map(r => r.plate)), [records])
   const lastPlates = useMemo(() => records.slice(0, 5).map(r => r.plate), [records])
   const API_BASE = (process.env.REACT_APP_API_BASE || '').replace(/\/+$/,'')
@@ -135,7 +135,23 @@ export default function App() {
       <div className="row" style={{ justifyContent: 'center' }}>
         <div className="col" style={{ maxWidth: 800 }}>
           <div className="card">
-            <CameraCapture onRecognize={handleRecognize} onRaw={debug ? setDebugInfo : undefined} onError={info => setErrorMsg(`Erro no reconhecimento: ${String(info.error)} ${String(info.detail || '')}`)} />
+            <CameraCapture
+              onRecognize={handleRecognize}
+              onRaw={debug ? setDebugInfo : undefined}
+              onError={info => {
+                const err = String(info && info.error || '')
+                const det = String(info && (info.detail || info.raw || ''))
+                if (err === 'fetch_failed') {
+                  const isLocalhost = typeof window !== 'undefined' && /localhost|127\.0\.0\.1/i.test(window.location.host)
+                  const msg = isLocalhost
+                    ? `Falha de conexão com API local`
+                    : `API não acessível no mobile. Defina a API Base em HTTPS e salve.`
+                  setErrorMsg(msg)
+                  return
+                }
+                setErrorMsg(`Erro no reconhecimento: ${err} ${det}`)
+              }}
+            />
           </div>
           <div className="card" style={{ marginTop: 12 }}>
             <div className="actions-center" style={{ gap: 8 }}>

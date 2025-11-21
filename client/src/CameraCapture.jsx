@@ -10,7 +10,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
   const [active, setActive] = useState(false)
   const [status, setStatus] = useState('aguardando')
   const [procToggle, setProcToggle] = useState(false)
-  const [torchMode, setTorchMode] = useState('auto') // 'auto' | 'on' | 'off'
+  const [torchOn, setTorchOn] = useState(false)
   const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent)
 
   const start = async () => {
@@ -33,29 +33,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         try {
           const t = stream.getVideoTracks && stream.getVideoTracks()[0]
           trackRef.current = t || null
-          const caps = t && t.getCapabilities && t.getCapabilities()
-          if (caps && caps.torch) {
-            if (torchMode === 'on') t.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {})
-            if (torchMode === 'off') t.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {})
-            if (torchMode === 'auto') {
-              setTimeout(() => {
-                try {
-                  const w = videoRef.current.videoWidth || 640
-                  const h = videoRef.current.videoHeight || 480
-                  const c = document.createElement('canvas')
-                  c.width = 160; c.height = Math.round(160 * (h / w))
-                  const cx = c.getContext('2d')
-                  cx.drawImage(videoRef.current, 0, 0, c.width, c.height)
-                  const img = cx.getImageData(0, 0, c.width, c.height)
-                  const data = img.data
-                  let sum = 0; let count = 0
-                  for (let i = 0; i < data.length; i += 4) { sum += data[i] + data[i+1] + data[i+2]; count++ }
-                  const avg = sum / (count * 3)
-                  if (avg < 80) t.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {})
-                } catch (_e) {}
-              }, 250)
-            }
-          }
+          // não ligar o flash automaticamente; só por clique
         } catch (_e) {}
         setReady(true)
         setActive(true)
@@ -76,15 +54,15 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const video = videoRef.current
       const w = video.videoWidth || 640
       const h = video.videoHeight || 480
-      const targetW = Math.min(960, w)
+      const targetW = Math.min(720, w)
       const targetH = Math.round(targetW * (h / w))
       const srcCanvas = document.createElement('canvas')
       srcCanvas.width = targetW
       srcCanvas.height = targetH
       const sctx = srcCanvas.getContext('2d')
       sctx.drawImage(video, 0, 0, targetW, targetH)
-      const cropW = Math.round(targetW * 0.7)
-      const cropH = Math.round(targetH * 0.45)
+      const cropW = Math.round(targetW * 0.9)
+      const cropH = Math.round(targetH * 0.55)
       const cropX = Math.round((targetW - cropW) / 2)
       const cropY = Math.round((targetH - cropH) / 2)
       const frameCanvas = document.createElement('canvas')
@@ -97,8 +75,8 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         try {
           const img = fctx.getImageData(0, 0, cropW, cropH)
           const data = img.data
-          const contrast = 50
-          const brightness = 10
+          const contrast = 60
+          const brightness = 12
           const factor = (259 * (contrast + 255)) / (255 * (259 - contrast))
           for (let i = 0; i < data.length; i += 4) {
             let r = data[i]
@@ -113,7 +91,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
           fctx.putImageData(img, 0, 0)
         } catch (_e) {}
       }
-      const blob = await new Promise(resolve => frameCanvas.toBlob(resolve, 'image/jpeg', 0.9))
+      const blob = await new Promise(resolve => frameCanvas.toBlob(resolve, 'image/jpeg', 0.8))
       const file = new File([blob], 'frame.jpg', { type: 'image/jpeg' })
       const fd = new FormData()
       fd.append('frame', file)
@@ -158,7 +136,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
     if (!timerRef.current) {
       timerRef.current = setInterval(() => {
         if (!busy) capture()
-      }, 300)
+      }, 200)
     }
     return () => {
       if (timerRef.current) {
@@ -180,32 +158,16 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
   }, [])
 
 
-  useEffect(() => {
+  const toggleTorch = async () => {
     const t = trackRef.current
     try {
       const caps = t && t.getCapabilities && t.getCapabilities()
       if (!caps || !caps.torch) return
-      if (torchMode === 'on') t.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {})
-      else if (torchMode === 'off') t.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {})
-      else {
-        const w = videoRef.current && videoRef.current.videoWidth || 0
-        const h = videoRef.current && videoRef.current.videoHeight || 0
-        if (w && h) {
-          const c = document.createElement('canvas')
-          c.width = 160; c.height = Math.round(160 * (h / w))
-          const cx = c.getContext('2d')
-          cx.drawImage(videoRef.current, 0, 0, c.width, c.height)
-          const img = cx.getImageData(0, 0, c.width, c.height)
-          const data = img.data
-          let sum = 0; let count = 0
-          for (let i = 0; i < data.length; i += 4) { sum += data[i] + data[i+1] + data[i+2]; count++ }
-          const avg = sum / (count * 3)
-          if (avg < 80) t.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {})
-          else t.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {})
-        }
-      }
+      const next = !torchOn
+      setTorchOn(next)
+      await t.applyConstraints({ advanced: [{ torch: next }] }).catch(() => {})
     } catch (_e) {}
-  }, [torchMode])
+  }
 
   const stop = () => {
     setActive(false)
@@ -232,8 +194,9 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         <button className="button" onClick={active ? stop : start} disabled={!active && busy}>
           {active ? 'Parar Leitura' : 'Ler Placas'}
         </button>
-        <button className="button" onClick={() => setTorchMode('on')}>Ligar Flash</button>
-        <button className="button" onClick={() => setTorchMode('off')}>Desligar Flash</button>
+        <button className="button" onClick={toggleTorch} title={torchOn ? 'Desligar flash' : 'Ligar flash'} style={{ width: 44 }}>
+          ⚡
+        </button>
       </div>
       {!active && (
         <div style={{ marginTop: 10, textAlign: 'center', color: '#5b6b84', fontSize: 14 }}>
