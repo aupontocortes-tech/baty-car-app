@@ -232,14 +232,6 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         <button className="button" onClick={active ? stop : start} disabled={!active && busy}>
           {active ? 'Parar Leitura' : 'Ler Placas'}
         </button>
-        <label className="button secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          Flash:
-          <select value={torchMode} onChange={e => setTorchMode(e.target.value)} style={{ marginLeft: 6 }}>
-            <option value="auto">Auto</option>
-            <option value="on">Ligado</option>
-            <option value="off">Desligado</option>
-          </select>
-        </label>
         <button className="button" onClick={() => setTorchMode('on')}>Ligar Flash</button>
         <button className="button" onClick={() => setTorchMode('off')}>Desligar Flash</button>
       </div>
