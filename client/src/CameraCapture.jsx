@@ -153,9 +153,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
     }
   }, [])
 
-  useEffect(() => {
-    if (!isIOS) start()
-  }, [])
+  // iniciar somente ao clicar em "Ler Placas"
 
 
   const toggleTorch = async () => {

@@ -155,7 +155,7 @@ export default function App() {
                   const isLocalhost = typeof window !== 'undefined' && /localhost|127\.0\.0\.1/i.test(window.location.host)
                   const msg = isLocalhost
                     ? `Falha de conexão com API local`
-                    : `API não acessível no mobile. Defina a API Base em HTTPS e salve.`
+                    : `API não acessível. Publique front e backend no mesmo domínio HTTPS.`
                   setErrorMsg(msg)
                   return
                 }
