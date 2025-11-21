@@ -16,6 +16,8 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState('')
   const [manualPlate, setManualPlate] = useState('')
   const [apiBase, setApiBase] = useState(() => (typeof localStorage !== 'undefined' && localStorage.getItem('API_BASE')) || '')
+  const [installEvt, setInstallEvt] = useState(null)
+
 
   const beep = () => {
     try {
@@ -95,6 +97,14 @@ export default function App() {
   useEffect(() => {
     try { console.log('app-mounted') } catch (_e) {}
   }, [])
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault()
+      setInstallEvt(e)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
   
 
   const handleManualRegister = () => {
@@ -120,6 +130,7 @@ export default function App() {
 
   return (
     <div className="container">
+      <button className="icon-button" onClick={promptInstall} title="Instalar aplicativo">⤓</button>
       <div className="title" style={{ textAlign: 'center' }}>BATY CAR APP</div>
       <div className="card" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -243,5 +254,17 @@ export default function App() {
       const v = String(apiBase || '').trim()
       if (typeof localStorage !== 'undefined') localStorage.setItem('API_BASE', v)
       setErrorMsg('')
+    } catch (_e) {}
+  }
+
+  const promptInstall = async () => {
+    try {
+      if (installEvt) {
+        await installEvt.prompt()
+        await installEvt.userChoice
+        setInstallEvt(null)
+      } else {
+        alert('Para instalar: menu do navegador > Adicionar à tela inicial')
+      }
     } catch (_e) {}
   }

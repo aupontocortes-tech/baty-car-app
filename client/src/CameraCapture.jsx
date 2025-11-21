@@ -97,7 +97,8 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       fd.append('frame', file)
       let data
       try {
-        const runtimeBase = (typeof localStorage !== 'undefined' && localStorage.getItem('API_BASE')) || process.env.REACT_APP_API_BASE || ''
+        let runtimeBase = (typeof localStorage !== 'undefined' && localStorage.getItem('API_BASE')) || process.env.REACT_APP_API_BASE || ''
+        if (!runtimeBase && typeof window !== 'undefined') runtimeBase = window.location.origin
         const base = runtimeBase.replace(/\/+$/,'')
         const url = `${base}/api/recognize?region=br`
         const resp = await fetch(url, {
