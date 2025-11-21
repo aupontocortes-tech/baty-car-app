@@ -259,12 +259,17 @@ export default function App() {
 
   const promptInstall = async () => {
     try {
+      const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent)
+      if (isIOS) {
+        alert('No iPhone/iPad: Compartilhar ▶ Adicionar à Tela de Início')
+        return
+      }
       if (installEvt) {
         await installEvt.prompt()
         await installEvt.userChoice
         setInstallEvt(null)
       } else {
-        alert('Para instalar: menu do navegador > Adicionar à tela inicial')
+        alert('No Android: menu do navegador ▶ Instalar aplicativo')
       }
     } catch (_e) {}
   }
