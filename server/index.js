@@ -32,7 +32,7 @@ const upload = multer({ storage })
 
 const runAlpr = (filePath, region) => new Promise((resolve, reject) => {
   const bin = process.env.ALPR_BIN || 'alpr'
-  const cmd = `${bin} --detect_region -n 5 -c ${region} -j "${filePath}"`
+  const cmd = `${bin} --detect_region -n 3 -c ${region} -j "${filePath}"`
   exec(cmd, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
     if (error) {
       reject({ error: 'alpr_failed', detail: String(stderr || error.message) })

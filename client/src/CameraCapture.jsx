@@ -8,6 +8,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
   const timerRef = useRef(null)
   const [active, setActive] = useState(false)
   const [status, setStatus] = useState('aguardando')
+  const [procToggle, setProcToggle] = useState(false)
 
   const start = async () => {
     if (ready) {
@@ -16,7 +17,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       return
     }
     try {
-      const constraints = { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } }
+      const constraints = { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } }
       let stream
       try {
         stream = await navigator.mediaDevices.getUserMedia(constraints)
@@ -26,6 +27,13 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       if (videoRef.current) {
         videoRef.current.srcObject = stream
         await videoRef.current.play()
+        try {
+          const t = stream.getVideoTracks && stream.getVideoTracks()[0]
+          const caps = t && t.getCapabilities && t.getCapabilities()
+          if (caps && caps.torch) {
+            t.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {})
+          }
+        } catch (_e) {}
         setReady(true)
         setActive(true)
         setStatus('lendo')
@@ -53,12 +61,13 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       canvas.height = targetH
       const ctx = canvas.getContext('2d')
       ctx.drawImage(video, 0, 0, targetW, targetH)
-      if (previewProcessed) {
+      const applyProc = true
+      if (applyProc) {
         try {
           const img = ctx.getImageData(0, 0, w, h)
           const data = img.data
-          const contrast = 40
-          const brightness = 10
+          const contrast = 60
+          const brightness = 12
           const factor = (259 * (contrast + 255)) / (255 * (259 - contrast))
           for (let i = 0; i < data.length; i += 4) {
             let r = data[i]
@@ -73,7 +82,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
           ctx.putImageData(img, 0, 0)
         } catch (_e) {}
       }
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85))
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9))
       const file = new File([blob], 'frame.jpg', { type: 'image/jpeg' })
       const fd = new FormData()
       fd.append('frame', file)
@@ -116,7 +125,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
     if (!timerRef.current) {
       timerRef.current = setInterval(() => {
         if (!busy) capture()
-      }, 350)
+      }, 300)
     }
     return () => {
       if (timerRef.current) {
