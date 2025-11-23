@@ -61,37 +61,8 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       srcCanvas.height = targetH
       const sctx = srcCanvas.getContext('2d')
       sctx.drawImage(video, 0, 0, targetW, targetH)
-      const cropW = Math.round(targetW * 0.9)
-      const cropH = Math.round(targetH * 0.55)
-      const cropX = Math.round((targetW - cropW) / 2)
-      const cropY = Math.round((targetH - cropH) / 2)
-      const frameCanvas = document.createElement('canvas')
-      frameCanvas.width = cropW
-      frameCanvas.height = cropH
-      const fctx = frameCanvas.getContext('2d')
-      fctx.drawImage(srcCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH)
-      const applyProc = true
-      if (applyProc) {
-        try {
-          const img = fctx.getImageData(0, 0, cropW, cropH)
-          const data = img.data
-          const contrast = 60
-          const brightness = 12
-          const factor = (259 * (contrast + 255)) / (255 * (259 - contrast))
-          for (let i = 0; i < data.length; i += 4) {
-            let r = data[i]
-            let g = data[i + 1]
-            let b = data[i + 2]
-            const gray = (0.2126 * r + 0.7152 * g + 0.0722 * b)
-            let v = gray
-            v = factor * (v - 128) + 128 + brightness
-            v = v < 0 ? 0 : (v > 255 ? 255 : v)
-            data[i] = data[i + 1] = data[i + 2] = v
-          }
-          fctx.putImageData(img, 0, 0)
-        } catch (_e) {}
-      }
-      const blob = await new Promise(resolve => frameCanvas.toBlob(resolve, 'image/jpeg', 0.8))
+      const frameCanvas = srcCanvas
+      const blob = await new Promise(resolve => frameCanvas.toBlob(resolve, 'image/jpeg', 0.7))
       const file = new File([blob], 'frame.jpg', { type: 'image/jpeg' })
       const fd = new FormData()
       fd.append('frame', file)
@@ -104,6 +75,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
           method: 'POST',
           body: fd
         })
+        if (!resp.ok) throw new Error(`status_${resp.status}`)
         data = await resp.json()
       } catch (e) {
         const info = { error: 'fetch_failed', detail: String(e && e.message || e) }
@@ -136,7 +108,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
     if (!timerRef.current) {
       timerRef.current = setInterval(() => {
         if (!busy) capture()
-      }, 200)
+      }, 250)
     }
     return () => {
       if (timerRef.current) {
