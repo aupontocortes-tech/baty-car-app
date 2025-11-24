@@ -74,16 +74,15 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         blob = new Blob([arr], { type: 'image/jpeg' })
       }
       const file = new File([blob], 'frame.jpg', { type: 'image/jpeg' })
-      const fd = new FormData()
-      fd.append('frame', file)
       let data
       try {
         const runtimeBase = process.env.REACT_APP_API_BASE || ''
         const base = runtimeBase.replace(/\/+$/,'')
-        const url = `${base}/api/recognize?region=br`
+        const url = `${base}/api/recognize-bytes?region=br`
         const resp = await fetch(url, {
           method: 'POST',
-          body: fd
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: blob
         })
         if (!resp.ok) throw new Error(`status_${resp.status}`)
         data = await resp.json()
