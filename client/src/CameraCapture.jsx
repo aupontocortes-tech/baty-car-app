@@ -109,8 +109,17 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
           for (const u of tryUrls) {
             try {
               const resp = await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob })
-              if (!resp.ok) throw new Error(`status_${resp.status}`)
-              data = await resp.json()
+              let j = null
+              try { j = await resp.json() } catch (_e) { j = null }
+              if (!resp.ok) {
+                if (j && (j.error || j.plates || j.results)) {
+                  data = j
+                  lastErr = null
+                  break
+                }
+                throw new Error(`status_${resp.status}`)
+              }
+              data = j || {}
               lastErr = null
               break
             } catch (e) {
