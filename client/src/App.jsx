@@ -177,11 +177,11 @@ export default function App() {
                   return
                 }
                 if (err === 'no_plate') {
-                  setErrorMsg('Nenhuma placa encontrada')
+                  setErrorMsg('')
                   return
                 }
                 if (err === 'alpr_no_results') {
-                  setErrorMsg('Nenhuma placa encontrada')
+                  setErrorMsg('')
                   return
                 }
                 if (err === 'alpr_failed' && /is not defined/i.test(det)) {
