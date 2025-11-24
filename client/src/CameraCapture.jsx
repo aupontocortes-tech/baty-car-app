@@ -96,10 +96,20 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       if (data && data.error) {
         if (onError) onError({ error: data.error, detail: data.detail || data.raw || '' })
       }
-      const plates = Array.isArray(data.plates) ? data.plates : []
-      if (plates.length && onRecognize) onRecognize(plates)
-      if (!plates.length) {
-        // no result this cycle
+      const regions = Array.isArray(data?.regions) ? data.regions : []
+      const alprFailed = !!(data && data.alpr_failed)
+      const first = Array.isArray(data?.results) ? data.results[0] : null
+      const plate = (first && first.plate) ? first.plate : ''
+      if (plate) {
+        const conf = typeof (first && first.confidence) === 'number' ? first.confidence : Number(first && first.confidence) || 0
+        if (onRecognize) onRecognize([{ plate, confidence: conf }])
+      } else {
+        const plates = Array.isArray(data.plates) ? data.plates : []
+        if (plates.length && onRecognize) {
+          onRecognize(plates)
+        } else {
+          if (onError) onError({ error: 'no_plate', detail: 'Nenhuma placa encontrada' })
+        }
       }
     } finally {
       setBusy(false)

@@ -127,6 +127,23 @@ export default function App() {
     setErrorMsg('')
   }
 
+  const promptInstall = async () => {
+    try {
+      const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent)
+      if (isIOS) {
+        alert('No iPhone/iPad: Compartilhar ▶ Adicionar à Tela de Início')
+        return
+      }
+      if (installEvt) {
+        await installEvt.prompt()
+        await installEvt.userChoice
+        setInstallEvt(null)
+      } else {
+        alert('No Android: menu do navegador ▶ Instalar aplicativo')
+      }
+    } catch (_e) {}
+  }
+
   return (
     <div className="container">
       <button className="icon-button" onClick={promptInstall} title="Instalar aplicativo">⤓</button>
@@ -157,6 +174,18 @@ export default function App() {
                     ? `Falha de conexão com API local`
                     : `API não acessível. Publique front e backend no mesmo domínio HTTPS.`
                   setErrorMsg(msg)
+                  return
+                }
+                if (err === 'no_plate') {
+                  setErrorMsg('Nenhuma placa encontrada')
+                  return
+                }
+                if (err === 'alpr_no_results') {
+                  setErrorMsg('Nenhuma placa encontrada')
+                  return
+                }
+                if (err === 'alpr_failed' && /is not defined/i.test(det)) {
+                  setErrorMsg('Nenhuma placa encontrada')
                   return
                 }
                 setErrorMsg(`Erro no reconhecimento: ${err} ${det}`)
@@ -243,20 +272,3 @@ export default function App() {
     </div>
   )
 }
-
-  const promptInstall = async () => {
-    try {
-      const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent)
-      if (isIOS) {
-        alert('No iPhone/iPad: Compartilhar ▶ Adicionar à Tela de Início')
-        return
-      }
-      if (installEvt) {
-        await installEvt.prompt()
-        await installEvt.userChoice
-        setInstallEvt(null)
-      } else {
-        alert('No Android: menu do navegador ▶ Instalar aplicativo')
-      }
-    } catch (_e) {}
-  }

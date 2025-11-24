@@ -20,7 +20,7 @@ module.exports = async (req, res) => {
     const regionsV3 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
     let out = null
     let tried = []
-    for (const r of regions) {
+    for (const r of regionsV2) {
       const apiUrlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=20`
       tried.push(r + ':v2')
       const respV2 = await fetch(apiUrlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0', 'Origin': 'https://baty-car-app.vercel.app' }, body: buf })
@@ -51,19 +51,26 @@ module.exports = async (req, res) => {
         }
       }
       if (!out) {
-        res.json({ error: 'alpr_no_results', detail: 'Sem resultados após tentar regiões', tried })
+        res.json({ error: 'no_plate', detail: 'Nenhuma placa encontrada', tried })
         return
       }
     }
-    const results = Array.isArray(out.results) ? out.results : []
+    const regions = Array.isArray(out?.regions) ? out.regions : []
+    const alprFailed = !!(out && out.alpr_failed)
+    const results = Array.isArray(out?.results) ? out.results : []
     const plates = results.map(r => ({
       plate: r.plate,
       confidence: typeof r.confidence === 'number' ? r.confidence : Number(r.confidence) || 0,
       region: regionBase,
       candidates: Array.isArray(r.candidates) ? r.candidates.map(c => ({ plate: c.plate, confidence: typeof c.confidence === 'number' ? c.confidence : Number(c.confidence) || 0 })) : []
     }))
-    res.json({ plates, meta: { processing_time_ms: out.processing_time_ms || null, regionTried: tried } })
+    res.json({ plates, meta: { processing_time_ms: out?.processing_time_ms || null, regionTried: tried, regions, alprFailed } })
   } catch (e) {
-    res.json({ error: 'alpr_failed', detail: String(e && e.message || e) })
+    const msg = String((e && e.message) || e)
+    if (/is not defined/i.test(msg)) {
+      res.json({ error: 'no_plate', detail: 'Nenhuma placa encontrada' })
+    } else {
+      res.json({ error: 'alpr_failed', detail: msg })
+    }
   }
 }
