@@ -29,24 +29,32 @@ module.exports = async (req, res) => {
     const regionBase = regionParam === 'br' ? 'eu' : (['us', 'eu'].includes(regionParam) ? regionParam : 'eu')
     const secret = process.env.OPENALPR_API_KEY || 'sk_DEMO'
     try {
-      const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionBase)}&return_image=0&topn=10`
-      const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0', 'Origin': 'https://baty-car-app.vercel.app' }, body: buf })
-      let out
-      if (!respV2.ok && (respV2.status === 401 || respV2.status === 403)) {
-        const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionBase)}&return_image=0&topn=10`
-        const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0', 'Origin': 'https://baty-car-app.vercel.app' }, body: buf })
-        if (!respV3.ok) {
-          const detail = await respV3.text().catch(() => '')
-          res.json({ error: 'status_' + respV3.status, detail })
-          return
+      const preferred = regionBase
+      const regions = [preferred, preferred === 'eu' ? 'us' : 'eu']
+      let out = null
+      let tried = []
+      for (const r of regions) {
+        const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=10`
+        tried.push(r + ':v2')
+        const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0', 'Origin': 'https://baty-car-app.vercel.app' }, body: buf })
+        if (respV2.ok) {
+          const maybe = await respV2.json()
+          const arr = Array.isArray(maybe.results) ? maybe.results : []
+          if (arr.length > 0) { out = maybe; break }
+        } else if (respV2.status === 401 || respV2.status === 403) {
+          const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=10`
+          tried.push(r + ':v3')
+          const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0', 'Origin': 'https://baty-car-app.vercel.app' }, body: buf })
+          if (respV3.ok) {
+            const maybe3 = await respV3.json()
+            const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
+            if (arr3.length > 0) { out = maybe3; break }
+          }
         }
-        out = await respV3.json()
-      } else if (!respV2.ok) {
-        const detail = await respV2.text().catch(() => '')
-        res.json({ error: 'status_' + respV2.status, detail })
+      }
+      if (!out) {
+        res.json({ error: 'alpr_no_results', detail: 'Sem resultados após tentar regiões', tried })
         return
-      } else {
-        out = await respV2.json()
       }
       const results = Array.isArray(out.results) ? out.results : []
       const plates = results.map(r => ({
@@ -55,7 +63,7 @@ module.exports = async (req, res) => {
         region: regionBase,
         candidates: Array.isArray(r.candidates) ? r.candidates.map(c => ({ plate: c.plate, confidence: typeof c.confidence === 'number' ? c.confidence : Number(c.confidence) || 0 })) : []
       }))
-      res.json({ plates, meta: { processing_time_ms: out.processing_time_ms || null, regionTried: [regionBase] } })
+      res.json({ plates, meta: { processing_time_ms: out.processing_time_ms || null, regionTried: tried } })
     } catch (e) {
       res.json({ error: 'alpr_failed', detail: String(e && e.message || e) })
     }
