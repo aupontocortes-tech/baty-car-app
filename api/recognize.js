@@ -2,18 +2,18 @@ const { IncomingForm } = require('formidable')
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
-    res.status(405).json({ error: 'method_not_allowed' })
+    res.json({ error: 'method_not_allowed' })
     return
   }
   const form = new IncomingForm({ multiples: false, keepExtensions: false })
   form.parse(req, async (err, fields, files) => {
     if (err) {
-      res.status(500).json({ error: 'parse_failed' })
+      res.json({ error: 'parse_failed' })
       return
     }
     const f = files && (files.frame || files.file)
     if (!f) {
-      res.status(400).json({ error: 'missing_file' })
+      res.json({ error: 'missing_file' })
       return
     }
     let buf
@@ -22,7 +22,7 @@ module.exports = async (req, res) => {
       const fs = require('fs')
       buf = fs.readFileSync(p.filepath || p.path)
     } catch (_e) {
-      res.status(500).json({ error: 'read_failed' })
+      res.json({ error: 'read_failed' })
       return
     }
     const regionParam = String((req.query.region || process.env.ALPR_REGION || 'br')).toLowerCase()
@@ -32,7 +32,8 @@ module.exports = async (req, res) => {
       const url = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionBase)}&return_image=0&topn=10`
       const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: buf })
       if (!resp.ok) {
-        res.status(resp.status).json({ error: 'status_' + resp.status })
+        const detail = await resp.text().catch(() => '')
+        res.json({ error: 'status_' + resp.status, detail })
         return
       }
       const out = await resp.json()
@@ -45,8 +46,7 @@ module.exports = async (req, res) => {
       }))
       res.json({ plates, meta: { processing_time_ms: out.processing_time_ms || null, regionTried: [regionBase] } })
     } catch (e) {
-      res.status(500).json({ error: 'alpr_failed', detail: String(e && e.message || e) })
+      res.json({ error: 'alpr_failed', detail: String(e && e.message || e) })
     }
   })
 }
-
