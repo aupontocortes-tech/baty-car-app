@@ -54,7 +54,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const video = videoRef.current
       const w = video.videoWidth || 640
       const h = video.videoHeight || 480
-      const targetW = Math.min(640, w)
+      const targetW = Math.min(720, w)
       const targetH = Math.round(targetW * (h / w))
       const srcCanvas = document.createElement('canvas')
       srcCanvas.width = targetW
@@ -62,7 +62,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const sctx = srcCanvas.getContext('2d')
       sctx.drawImage(video, 0, 0, targetW, targetH)
       const frameCanvas = srcCanvas
-      let blob = await new Promise(resolve => frameCanvas.toBlob(resolve, 'image/jpeg', 0.7))
+        let blob = await new Promise(resolve => frameCanvas.toBlob(resolve, 'image/jpeg', 0.8))
       if (!blob) {
         const dataUrl = frameCanvas.toDataURL('image/jpeg', 0.7)
         const comma = dataUrl.indexOf(',')
