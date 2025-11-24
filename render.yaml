@@ -13,3 +13,7 @@ services:
         value: sk_DEMO
       - key: ALPR_REGION
         value: br
+      - key: OPENLPR_URL
+        value: https://OPENLPR_ENGINE_URL
+      - key: OPENLPR_DETECT_PATH
+        value: /api/detect

@@ -5,7 +5,7 @@ import ResultsTable from './ResultsTable'
 
 export default function App() {
   const [records, setRecords] = useState([])
-  const minConfidence = 60
+  const minConfidence = 40
   const seen = useMemo(() => new Set(records.map(r => r.plate)), [records])
   const lastPlates = useMemo(() => records.slice(0, 5).map(r => r.plate), [records])
   const API_BASE = (process.env.REACT_APP_API_BASE || '').replace(/\/+$/,'')

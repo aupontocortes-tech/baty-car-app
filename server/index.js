@@ -31,6 +31,9 @@ const storage = multer.diskStorage({
 })
 const upload = multer({ storage })
 
+const OPENLPR_URL = (process.env.OPENLPR_URL || '').replace(/\/+$/,'')
+const OPENLPR_DETECT_PATH = process.env.OPENLPR_DETECT_PATH || '/api/detect'
+
 const runAlpr = (filePath, region) => new Promise((resolve, reject) => {
   const bin = process.env.ALPR_BIN || 'alpr'
   const cmd = `${bin} --detect_region -n 3 -c ${region} -j "${filePath}"`
@@ -50,6 +53,24 @@ const runAlpr = (filePath, region) => new Promise((resolve, reject) => {
   })
 })
 
+async function runOpenLprBytes(buf) {
+  if (!OPENLPR_URL) return null
+  const url = OPENLPR_URL + OPENLPR_DETECT_PATH
+  const b64 = buf.toString('base64')
+  const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: b64 }) })
+  if (!resp.ok) return null
+  const j = await resp.json().catch(() => null)
+  if (!j) return null
+  const first = Array.isArray(j.results) ? j.results[0] : null
+  const plate = (j.plate || (first && first.plate) || '')
+  const confidenceRaw = (j.confidence != null ? j.confidence : (first && first.confidence))
+  const confidence = typeof confidenceRaw === 'number' ? confidenceRaw : (Number(confidenceRaw) || 0)
+  if (plate) return { results: [{ plate, confidence }] }
+  if (Array.isArray(j.results) && j.results.length) return { results: j.results }
+  if (Array.isArray(j.plates) && j.plates.length) return { results: j.plates.map(p => ({ plate: p.plate, confidence: p.confidence })) }
+  return null
+}
+
 app.post('/api/recognize', upload.single('frame'), async (req, res) => {
   if (!req.file) {
     res.status(400).json({ error: 'missing_file' })
@@ -62,13 +83,20 @@ app.post('/api/recognize', upload.single('frame'), async (req, res) => {
   let parsed = null
   let usedRegion = regionBase
   let lastError = null
+  try {
+    const buf = await fs.promises.readFile(filePath)
+    const ol = await runOpenLprBytes(buf)
+    if (ol && Array.isArray(ol.results) && ol.results.length) {
+      parsed = { results: ol.results }
+    }
+  } catch (_e) {}
   for (const r of order) {
     try {
       const out = await runAlpr(filePath, r)
       const resArr = Array.isArray(out.results) ? out.results : []
       parsed = out
       usedRegion = r
-      if (resArr.length > 0) break
+      if (resArr.length > 0 || parsed) break
     } catch (e) {
       lastError = e
     }
@@ -124,6 +152,18 @@ app.post('/api/recognize-bytes', async (req, res) => {
     const buf = Buffer.concat(chunks)
     if (!buf || buf.length === 0) {
       res.status(400).json({ error: 'missing_bytes' })
+      return
+    }
+    const ol = await runOpenLprBytes(buf)
+    if (ol && Array.isArray(ol.results) && ol.results.length) {
+      const results = ol.results
+      const plates = results.map(r => ({
+        plate: r.plate,
+        confidence: typeof r.confidence === 'number' ? r.confidence : Number(r.confidence) || 0,
+        region: (process.env.ALPR_REGION || 'br'),
+        candidates: []
+      }))
+      res.json({ plates, meta: { engine: 'openlpr' } })
       return
     }
     const tmpName = `${Date.now()}_frombytes.jpg`
@@ -209,6 +249,18 @@ app.post('/api/read-plate', async (req, res) => {
         res.status(400).json({ error: 'missing_bytes' })
         return
       }
+    }
+    const ol = await runOpenLprBytes(buf)
+    if (ol && Array.isArray(ol.results) && ol.results.length) {
+      const results = ol.results
+      const plates = results.map(r => ({
+        plate: r.plate,
+        confidence: typeof r.confidence === 'number' ? r.confidence : Number(r.confidence) || 0,
+        region: (process.env.ALPR_REGION || 'br'),
+        candidates: []
+      }))
+      res.json({ plates, meta: { engine: 'openlpr' } })
+      return
     }
     const tmpName = `${Date.now()}_readplate.jpg`
     const tmpPath = path.join(uploadsDir, tmpName)
