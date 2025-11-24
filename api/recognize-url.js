@@ -15,8 +15,8 @@ module.exports = async (req, res) => {
       return
     }
     const buf = Buffer.from(await imgResp.arrayBuffer())
-    const apiUrl = `https://api.openalpr.com/v2/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionBase)}&return_image=0&topn=10`
-    const resp = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
+    const apiUrl = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionBase)}&return_image=0&topn=10`
+    const resp = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
     if (!resp.ok) {
       const detail = await resp.text().catch(() => '')
       res.json({ error: 'status_' + resp.status, detail })
