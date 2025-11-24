@@ -29,14 +29,25 @@ module.exports = async (req, res) => {
     const regionBase = regionParam === 'br' ? 'eu' : (['us', 'eu'].includes(regionParam) ? regionParam : 'eu')
     const secret = process.env.OPENALPR_API_KEY || 'sk_DEMO'
     try {
-      const url = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionBase)}&return_image=0&topn=10`
-      const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-      if (!resp.ok) {
-        const detail = await resp.text().catch(() => '')
-        res.json({ error: 'status_' + resp.status, detail })
+      const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionBase)}&return_image=0&topn=10`
+      const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0', 'Origin': 'https://baty-car-app.vercel.app' }, body: buf })
+      let out
+      if (!respV2.ok && (respV2.status === 401 || respV2.status === 403)) {
+        const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionBase)}&return_image=0&topn=10`
+        const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0', 'Origin': 'https://baty-car-app.vercel.app' }, body: buf })
+        if (!respV3.ok) {
+          const detail = await respV3.text().catch(() => '')
+          res.json({ error: 'status_' + respV3.status, detail })
+          return
+        }
+        out = await respV3.json()
+      } else if (!respV2.ok) {
+        const detail = await respV2.text().catch(() => '')
+        res.json({ error: 'status_' + respV2.status, detail })
         return
+      } else {
+        out = await respV2.json()
       }
-      const out = await resp.json()
       const results = Array.isArray(out.results) ? out.results : []
       const plates = results.map(r => ({
         plate: r.plate,

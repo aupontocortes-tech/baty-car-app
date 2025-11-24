@@ -73,8 +73,29 @@ app.post('/api/recognize', upload.single('frame'), async (req, res) => {
     }
   }
   if (!parsed) {
-    res.status(500).json(lastError || { error: 'unknown' })
-    return
+    try {
+      const buf = await fs.promises.readFile(filePath)
+      const secret = process.env.OPENALPR_API_KEY || 'sk_DEMO'
+      const regionTry = regionBase
+      const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionTry)}&return_image=0&topn=10`
+      const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
+      let out
+      if (!respV2.ok && (respV2.status === 401 || respV2.status === 403)) {
+        const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionTry)}&return_image=0&topn=10`
+        const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
+        if (!respV3.ok) throw new Error(`status_${respV3.status}`)
+        out = await respV3.json()
+      } else if (!respV2.ok) {
+        throw new Error(`status_${respV2.status}`)
+      } else {
+        out = await respV2.json()
+      }
+      parsed = out
+      usedRegion = regionTry
+    } catch (e) {
+      res.status(500).json(lastError || { error: 'unknown', detail: String(e && e.message || e) })
+      return
+    }
   }
   const results = Array.isArray(parsed.results) ? parsed.results : []
   const plates = results.map(r => ({
@@ -89,6 +110,78 @@ app.post('/api/recognize', upload.single('frame'), async (req, res) => {
       : []
   }))
   res.json({ plates, imageFile: null, meta: { processing_time_ms: parsed.processing_time_ms || null, regionTried: order } })
+})
+
+app.post('/api/recognize-bytes', async (req, res) => {
+  try {
+    const chunks = []
+    await new Promise((resolve, reject) => {
+      req.on('data', (c) => chunks.push(c))
+      req.on('end', resolve)
+      req.on('error', reject)
+    })
+    const buf = Buffer.concat(chunks)
+    if (!buf || buf.length === 0) {
+      res.status(400).json({ error: 'missing_bytes' })
+      return
+    }
+    const tmpName = `${Date.now()}_frombytes.jpg`
+    const tmpPath = path.join(uploadsDir, tmpName)
+    await fs.promises.writeFile(tmpPath, buf)
+    const regionParam = (req.query.region || process.env.ALPR_REGION || 'br').toString().toLowerCase()
+    const regionBase = regionParam === 'br' ? 'eu' : (['us', 'eu'].includes(regionParam) ? regionParam : 'eu')
+    const order = [regionBase, 'us']
+    let parsed = null
+    let usedRegion = regionBase
+    let lastError = null
+    for (const r of order) {
+      try {
+        const out = await runAlpr(tmpPath, r)
+        const resArr = Array.isArray(out.results) ? out.results : []
+        parsed = out
+        usedRegion = r
+        if (resArr.length > 0) break
+      } catch (e) {
+        lastError = e
+      }
+    }
+    if (!parsed) {
+      try {
+        const secret = process.env.OPENALPR_API_KEY || 'sk_DEMO'
+        const regionTry = regionBase
+        const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionTry)}&return_image=0&topn=10`
+        const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
+        let out
+        if (!respV2.ok && (respV2.status === 401 || respV2.status === 403)) {
+          const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionTry)}&return_image=0&topn=10`
+          const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
+          if (!respV3.ok) throw new Error(`status_${respV3.status}`)
+          out = await respV3.json()
+        } else if (!respV2.ok) {
+          throw new Error(`status_${respV2.status}`)
+        } else {
+          out = await respV2.json()
+        }
+        parsed = out
+        usedRegion = regionTry
+      } catch (e) {
+        res.status(500).json(lastError || { error: 'unknown', detail: String(e && e.message || e) })
+        return
+      }
+    }
+    const results = Array.isArray(parsed.results) ? parsed.results : []
+    const plates = results.map(r => ({
+      plate: r.plate,
+      confidence: typeof r.confidence === 'number' ? r.confidence : Number(r.confidence) || 0,
+      region: usedRegion,
+      candidates: Array.isArray(r.candidates)
+        ? r.candidates.map(c => ({ plate: c.plate, confidence: typeof c.confidence === 'number' ? c.confidence : Number(c.confidence) || 0 }))
+        : []
+    }))
+    res.json({ plates, meta: { processing_time_ms: parsed.processing_time_ms || null, regionTried: order } })
+  } catch (e) {
+    res.status(500).json({ error: 'alpr_failed', detail: String(e && e.message || e) })
+  }
 })
 
 const downloadToFile = (fileUrl, destPath) => new Promise((resolve, reject) => {
