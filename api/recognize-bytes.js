@@ -19,7 +19,7 @@ module.exports = async (req, res) => {
     const regionBase = regionParam === 'br' ? 'eu' : (['us', 'eu'].includes(regionParam) ? regionParam : 'eu')
     const secret = process.env.OPENALPR_API_KEY || 'sk_DEMO'
     const apiUrl = `https://api.openalpr.com/v2/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionBase)}&return_image=0&topn=10`
-    const resp = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: buf })
+    const resp = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
     if (!resp.ok) {
       const detail = await resp.text().catch(() => '')
       res.json({ error: 'status_' + resp.status, detail })
