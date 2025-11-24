@@ -76,16 +76,37 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const file = new File([blob], 'frame.jpg', { type: 'image/jpeg' })
       let data
       try {
-        const runtimeBase = process.env.REACT_APP_API_BASE || ''
-        const base = runtimeBase.replace(/\/+$/,'')
-        const url = `${base}/api/recognize-bytes?region=br`
-        const resp = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/octet-stream' },
-          body: blob
-        })
-        if (!resp.ok) throw new Error(`status_${resp.status}`)
-        data = await resp.json()
+        const mode = (process.env.REACT_APP_ALPR_MODE || 'cloud').toLowerCase()
+        if (mode === 'openlpr') {
+          const openlprBase = String(process.env.REACT_APP_OPENLPR_BASE || '').replace(/\/+$/,'')
+          const url = `${openlprBase}/scan`
+          const b64 = await new Promise((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(String(reader.result || '').replace(/^data:[^;]+;base64,/, ''))
+            reader.readAsDataURL(blob)
+          })
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: b64 })
+          })
+          if (!resp.ok) throw new Error(`status_${resp.status}`)
+          const j = await resp.json()
+          const plate = String(j && j.plate || '')
+          const confidence = typeof (j && j.confidence) === 'number' ? j.confidence : Number(j && j.confidence) || 0
+          data = { results: [{ plate, confidence }] }
+        } else {
+          const runtimeBase = process.env.REACT_APP_API_BASE || ''
+          const base = runtimeBase.replace(/\/+$/,'')
+          const url = `${base}/api/read-plate?region=br`
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: blob
+          })
+          if (!resp.ok) throw new Error(`status_${resp.status}`)
+          data = await resp.json()
+        }
       } catch (e) {
         const info = { error: 'fetch_failed', detail: String(e && e.message || e) }
         if (onRaw) onRaw(info)

@@ -1,20 +1,5 @@
 services:
   - type: web
-    name: openlpr-server
-    env: node
-    rootDir: openlpr-server
-    buildCommand: npm install
-    startCommand: npm start
-    autoDeploy: true
-    envVars:
-      - key: PORT
-        value: 3000
-      - key: OPENLPR_URL
-        value: https://OPENLPR_ENGINE_URL
-      - key: OPENLPR_DETECT_PATH
-        value: /api/detect
-
-  - type: web
     name: baty-car-app
     env: node
     rootDir: .
