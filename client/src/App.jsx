@@ -16,6 +16,7 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState('')
   const [manualPlate, setManualPlate] = useState('')
   const [installEvt, setInstallEvt] = useState(null)
+  const [uploading, setUploading] = useState(false)
 
 
   const beep = () => {
@@ -144,6 +145,57 @@ export default function App() {
     } catch (_e) {}
   }
 
+  const sendFileToApi = async (file) => {
+    try {
+      setUploading(true)
+      const origin = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : ''
+      const preferSameOrigin = /^https:/i.test(origin)
+      const runtimeBase = process.env.REACT_APP_API_BASE || ''
+      const base = preferSameOrigin ? '' : runtimeBase.replace(/\/+$/,'')
+      const url = `${base}/api/read-plate?region=br`
+      const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file })
+      const data = await resp.json().catch(() => null)
+      if (!resp.ok && data && data.error) {
+        if (onRaw) setDebugInfo(data)
+        if (onError) onError({ error: data.error, detail: data.detail || '' })
+        return
+      }
+      if (!data) {
+        if (onError) onError({ error: 'fetch_failed', detail: 'invalid_json' })
+        return
+      }
+      if (onRaw) setDebugInfo(data)
+      const plates = Array.isArray(data.plates) ? data.plates : []
+      if (plates.length) {
+        handleRecognize(plates)
+        setErrorMsg('')
+        return
+      }
+      const first = Array.isArray(data.results) ? data.results[0] : null
+      if (first && first.plate) {
+        const conf = typeof first.confidence === 'number' ? first.confidence : Number(first.confidence) || 0
+        handleRecognize([{ plate: first.plate, confidence: conf }])
+        setErrorMsg('')
+        return
+      }
+      setErrorMsg('Nenhuma placa encontrada')
+    } catch (e) {
+      const msg = String(e && e.message || e)
+      setErrorMsg(/abort|timeout/i.test(msg) ? 'Conexão expirada' : 'Falha ao enviar imagem')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleSelectFile = async (e) => {
+    try {
+      const f = e?.target?.files?.[0]
+      if (!f) return
+      await sendFileToApi(f)
+      e.target.value = ''
+    } catch (_e) {}
+  }
+
   return (
     <div className="container">
       <button className="icon-button" onClick={promptInstall} title="Instalar aplicativo">⤓</button>
@@ -196,6 +248,12 @@ export default function App() {
           <div className="card" style={{ marginTop: 12 }}>
             <div className="actions-center">
               <button className="button" onClick={downloadExcel}>Baixar Excel (.xlsx)</button>
+            </div>
+          </div>
+          <div className="card" style={{ marginTop: 12 }}>
+            <div className="actions-center" style={{ gap: 8 }}>
+              <input type="file" accept="image/*" onChange={handleSelectFile} />
+              <button className="button" disabled={uploading}>Enviar foto</button>
             </div>
           </div>
           <div className="card" style={{ marginTop: 12 }}>
