@@ -14,3 +14,17 @@ services:
       - key: OPENLPR_DETECT_PATH
         value: /api/detect
 
+  - type: web
+    name: baty-car-app
+    env: node
+    rootDir: .
+    buildCommand: npm run build
+    startCommand: npm run server
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: OPENALPR_API_KEY
+        value: sk_DEMO
+      - key: ALPR_REGION
+        value: br
