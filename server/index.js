@@ -33,6 +33,7 @@ const upload = multer({ storage })
 
 const OPENLPR_URL = (process.env.OPENLPR_URL || '').replace(/\/+$/,'')
 const OPENLPR_DETECT_PATH = process.env.OPENLPR_DETECT_PATH || '/api/detect'
+const FASTAPI_BASE = (process.env.FASTAPI_BASE || '').replace(/\/+$/,'')
 
 const runAlpr = (filePath, region) => new Promise((resolve, reject) => {
   const bin = process.env.ALPR_BIN || 'alpr'
@@ -318,6 +319,38 @@ app.post('/api/read-plate', async (req, res) => {
     res.json({ plates, meta: { processing_time_ms: parsed.processing_time_ms || null, regionTried: order } })
   } catch (e) {
     res.status(500).json({ error: 'alpr_failed', detail: String(e && e.message || e) })
+  }
+})
+
+app.post('/read-plate', async (req, res) => {
+  try {
+    const base = FASTAPI_BASE
+    if (!/^https?:\/\//i.test(base)) {
+      res.status(500).json({ error: 'proxy_not_configured' })
+      return
+    }
+    const ct = String(req.headers['content-type'] || '').toLowerCase()
+    const region = (req.query.region || process.env.ALPR_REGION || 'br').toString().toLowerCase()
+    const chunks = []
+    await new Promise((resolve, reject) => {
+      req.on('data', (c) => chunks.push(c))
+      req.on('end', resolve)
+      req.on('error', reject)
+    })
+    const buf = Buffer.concat(chunks)
+    const url = `${base}/read-plate?region=${encodeURIComponent(region)}`
+    const headers = { 'Content-Type': ct || 'application/octet-stream' }
+    const resp = await fetch(url, { method: 'POST', headers, body: buf })
+    const text = await resp.text()
+    let j
+    try { j = JSON.parse(text) } catch (_e) { j = null }
+    if (!resp.ok) {
+      res.status(resp.status).send(j || text)
+      return
+    }
+    res.send(j || text)
+  } catch (e) {
+    res.status(500).json({ error: 'proxy_failed', detail: String(e && e.message || e) })
   }
 })
 

@@ -83,7 +83,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 8000)
         const tryUrls = [
-          `${base}/api/read-plate?region=br`,
+          `${base}/read-plate?region=br`,
           `${base}/api/recognize-bytes?region=br`,
           `${base}/api/recognize?region=br`
         ]

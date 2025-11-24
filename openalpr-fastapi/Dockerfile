@@ -15,6 +15,6 @@ RUN python3 -m pip install --no-cache-dir -r requirements.txt
 COPY main.py /app/main.py
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
-ENV PORT=8000
-EXPOSE 8000
+ENV PORT=10000
+EXPOSE 10000
 CMD ["/app/start.sh"]

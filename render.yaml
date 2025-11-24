@@ -13,6 +13,14 @@ services:
         value: sk_DEMO
       - key: ALPR_REGION
         value: br
+      - key: FASTAPI_BASE
+        value: https://OPENALPR_FASTAPI_URL
+
+  - type: web
+    name: openalpr-fastapi
+    env: docker
+    rootDir: openalpr-fastapi
+    autoDeploy: true
       - key: OPENLPR_URL
         value: https://OPENLPR_ENGINE_URL
       - key: OPENLPR_DETECT_PATH
