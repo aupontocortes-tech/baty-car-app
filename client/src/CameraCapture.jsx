@@ -76,58 +76,40 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const file = new File([blob], 'frame.jpg', { type: 'image/jpeg' })
       let data
       try {
-        const mode = (process.env.REACT_APP_ALPR_MODE || 'cloud').toLowerCase()
-        if (mode === 'openlpr') {
-          const openlprBase = String(process.env.REACT_APP_OPENLPR_BASE || '').replace(/\/+$/,'')
-          const url = `${openlprBase}/scan`
-          const b64 = await new Promise((resolve) => {
-            const reader = new FileReader()
-            reader.onload = () => resolve(String(reader.result || '').replace(/^data:[^;]+;base64,/, ''))
-            reader.readAsDataURL(blob)
-          })
-          const resp = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image: b64 })
-          })
-          if (!resp.ok) throw new Error(`status_${resp.status}`)
-          const j = await resp.json()
-          const plate = String(j && j.plate || '')
-          const confidence = typeof (j && j.confidence) === 'number' ? j.confidence : Number(j && j.confidence) || 0
-          data = { results: [{ plate, confidence }] }
-        } else {
-          const origin = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : ''
-          const runtimeBase = process.env.REACT_APP_API_BASE || ''
-          const preferSameOrigin = /^https:/i.test(origin)
-          const base = preferSameOrigin ? '' : runtimeBase.replace(/\/+$/,'')
-          const tryUrls = [
-            `${base}/api/read-plate?region=br`,
-            `${base}/api/recognize-bytes?region=br`,
-            `${base}/api/recognize?region=br`
-          ]
-          let lastErr = null
-          for (const u of tryUrls) {
-            try {
-              const resp = await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob })
-              let j = null
-              try { j = await resp.json() } catch (_e) { j = null }
-              if (!resp.ok) {
-                if (j && (j.error || j.plates || j.results)) {
-                  data = j
-                  lastErr = null
-                  break
-                }
-                throw new Error(`status_${resp.status}`)
+        const origin = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : ''
+        const preferSameOrigin = /^https:/i.test(origin)
+        const runtimeBase = process.env.REACT_APP_API_BASE || ''
+        const base = preferSameOrigin ? '' : runtimeBase.replace(/\/+$/,'')
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 8000)
+        const tryUrls = [
+          `${base}/api/read-plate?region=br`,
+          `${base}/api/recognize-bytes?region=br`,
+          `${base}/api/recognize?region=br`
+        ]
+        let lastErr = null
+        for (const u of tryUrls) {
+          try {
+            const resp = await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob, signal: controller.signal })
+            let j = null
+            try { j = await resp.json() } catch (_e) { j = null }
+            if (!resp.ok) {
+              if (j && (j.error || j.plates || j.results)) {
+                data = j
+                lastErr = null
+                break
               }
-              data = j || {}
-              lastErr = null
-              break
-            } catch (e) {
-              lastErr = e
+              throw new Error(`status_${resp.status}`)
             }
+            data = j || {}
+            lastErr = null
+            break
+          } catch (e) {
+            lastErr = e
           }
-          if (lastErr) throw lastErr
         }
+        clearTimeout(timeoutId)
+        if (lastErr) throw lastErr
       } catch (e) {
         const info = { error: 'fetch_failed', detail: String(e && e.message || e) }
         if (onRaw) onRaw(info)
