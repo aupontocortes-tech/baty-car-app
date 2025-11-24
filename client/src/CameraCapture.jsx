@@ -100,14 +100,24 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
           const runtimeBase = process.env.REACT_APP_API_BASE || ''
           const preferSameOrigin = /^https:/i.test(origin)
           const base = preferSameOrigin ? '' : runtimeBase.replace(/\/+$/,'')
-          const url = `${base}/api/read-plate?region=br`
-          const resp = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/octet-stream' },
-            body: blob
-          })
-          if (!resp.ok) throw new Error(`status_${resp.status}`)
-          data = await resp.json()
+          const tryUrls = [
+            `${base}/api/read-plate?region=br`,
+            `${base}/api/recognize-bytes?region=br`,
+            `${base}/api/recognize?region=br`
+          ]
+          let lastErr = null
+          for (const u of tryUrls) {
+            try {
+              const resp = await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob })
+              if (!resp.ok) throw new Error(`status_${resp.status}`)
+              data = await resp.json()
+              lastErr = null
+              break
+            } catch (e) {
+              lastErr = e
+            }
+          }
+          if (lastErr) throw lastErr
         }
       } catch (e) {
         const info = { error: 'fetch_failed', detail: String(e && e.message || e) }
