@@ -31,7 +31,9 @@ def extract_best(result: dict) -> dict:
 
 @app.post("/read-plate")
 async def read_plate(request: Request, file: UploadFile | None = File(default=None)):
-    region = (request.query_params.get("region") or "us").lower()
+    region_raw = (request.query_params.get("region") or "br").lower()
+    # map 'br' to eu/us fallback for local OpenALPR
+    order = ["eu", "us"] if region_raw == "br" else [region_raw, "us"]
     body = None
     ct = (request.headers.get("content-type") or "").lower()
     if file is not None:
@@ -50,9 +52,21 @@ async def read_plate(request: Request, file: UploadFile | None = File(default=No
         return JSONResponse({"error": "missing_image"}, status_code=400)
     path = save_temp_bytes(body)
     try:
-        result = run_alpr(path, region)
-        best = extract_best(result)
-        return JSONResponse({"plate": best["plate"], "confidence": best["confidence"], "raw": result})
+        result = None
+        best = None
+        for r in order:
+            try:
+                candidate = run_alpr(path, r)
+                b = extract_best(candidate)
+                result = candidate
+                best = b
+                if b.get("plate"):
+                    break
+            except Exception:
+                continue
+        if not result:
+            return JSONResponse({"error": "no_plate", "detail": "Nenhuma placa encontrada"}, status_code=200)
+        return JSONResponse({"plate": best.get("plate", ""), "confidence": best.get("confidence", 0.0), "raw": result})
     except Exception as e:
         return JSONResponse({"error": "alpr_failed", "detail": str(e)}, status_code=500)
     finally:
@@ -61,3 +75,10 @@ async def read_plate(request: Request, file: UploadFile | None = File(default=No
         except Exception:
             pass
 
+@app.get("/health")
+async def health():
+    try:
+        p = subprocess.run(["alpr", "-v"], capture_output=True, text=True)
+        return JSONResponse({"ok": True, "alpr_version": p.stdout.strip() or p.stderr.strip()})
+    except Exception as e:
+        return JSONResponse({"ok": False, "detail": str(e)})
