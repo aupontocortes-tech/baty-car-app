@@ -96,8 +96,10 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
           const confidence = typeof (j && j.confidence) === 'number' ? j.confidence : Number(j && j.confidence) || 0
           data = { results: [{ plate, confidence }] }
         } else {
+          const origin = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : ''
           const runtimeBase = process.env.REACT_APP_API_BASE || ''
-          const base = runtimeBase.replace(/\/+$/,'')
+          const preferSameOrigin = /^https:/i.test(origin)
+          const base = preferSameOrigin ? '' : runtimeBase.replace(/\/+$/,'')
           const url = `${base}/api/read-plate?region=br`
           const resp = await fetch(url, {
             method: 'POST',
