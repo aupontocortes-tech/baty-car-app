@@ -28,9 +28,13 @@ async def read_plate(file: UploadFile = File(...), region: str = "br"):
     tmp.write(content)
     tmp.close()
 
+    region = (region or "br").lower()
+    if region == "br":
+        region = "eu"
     cmd = [
         "alpr",
         "-c", region,
+        "-j",
         tmp.name
     ]
 
