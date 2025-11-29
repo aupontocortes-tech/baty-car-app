@@ -14,14 +14,15 @@ services:
       - key: ALPR_REGION
         value: br
       - key: FASTAPI_BASE
-        value: https://OPENALPR_FASTAPI_URL
+        value: https://openalpr-fastapi-1.onrender.com
 
   - type: web
-    name: openalpr-fastapi
-    env: docker
+    name: openalpr-fastapi-1
+    env: python
     rootDir: openalpr-fastapi
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash start.sh
     autoDeploy: true
-      - key: OPENLPR_URL
-        value: https://OPENLPR_ENGINE_URL
-      - key: OPENLPR_DETECT_PATH
-        value: /api/detect
+    envVars:
+      - key: PORT
+        value: 8000

@@ -8,7 +8,7 @@ const http = require('http')
 const https = require('https')
 
 const app = express()
-app.use(cors({ origin: false }))
+app.use(cors())
 app.use(express.json({ limit: '10mb' }))
 
 const uploadsDir = path.join(__dirname, 'uploads')
@@ -33,7 +33,7 @@ const upload = multer({ storage })
 
 const OPENLPR_URL = (process.env.OPENLPR_URL || '').replace(/\/+$/,'')
 const OPENLPR_DETECT_PATH = process.env.OPENLPR_DETECT_PATH || '/api/detect'
-const FASTAPI_BASE = (process.env.FASTAPI_BASE || '').replace(/\/+$/,'')
+const FASTAPI_BASE = (process.env.FASTAPI_BASE || process.env.OPENALPR_FASTAPI || 'https://openalpr-fastapi-1.onrender.com').replace(/\/+$/,'')
 
 const runAlpr = (filePath, region) => new Promise((resolve, reject) => {
   const bin = process.env.ALPR_BIN || 'alpr'
@@ -58,9 +58,37 @@ async function runOpenLprBytes(buf) {
   if (!OPENLPR_URL) return null
   const url = OPENLPR_URL + OPENLPR_DETECT_PATH
   const b64 = buf.toString('base64')
-  const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: b64 }) })
-  if (!resp.ok) return null
-  const j = await resp.json().catch(() => null)
+  const j = await new Promise((resolve) => {
+    try {
+      const u = new URL(url)
+      const isHttps = u.protocol === 'https:'
+      const mod = isHttps ? https : http
+      const payload = JSON.stringify({ image: b64 })
+      const opts = {
+        method: 'POST',
+        hostname: u.hostname,
+        port: u.port || (isHttps ? 443 : 80),
+        path: u.pathname + (u.search || ''),
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+      }
+      const req = mod.request(opts, (res) => {
+        let data = ''
+        res.on('data', (c) => { data += c })
+        res.on('end', () => {
+          if (res.statusCode && res.statusCode >= 400) {
+            resolve(null)
+            return
+          }
+          try { resolve(JSON.parse(data)) } catch (_e) { resolve(null) }
+        })
+      })
+      req.on('error', () => resolve(null))
+      req.write(payload)
+      req.end()
+    } catch (_e) {
+      resolve(null)
+    }
+  })
   if (!j) return null
   const first = Array.isArray(j.results) ? j.results[0] : null
   const plate = (j.plate || (first && first.plate) || '')
@@ -338,19 +366,94 @@ app.post('/read-plate', async (req, res) => {
       req.on('error', reject)
     })
     const buf = Buffer.concat(chunks)
-    const url = `${base}/read-plate?region=${encodeURIComponent(region)}`
-    const headers = { 'Content-Type': ct || 'application/octet-stream' }
-    const resp = await fetch(url, { method: 'POST', headers, body: buf })
-    const text = await resp.text()
-    let j
-    try { j = JSON.parse(text) } catch (_e) { j = null }
-    if (!resp.ok) {
-      res.status(resp.status).send(j || text)
-      return
+    const urlStr = `${base}/read-plate?region=${encodeURIComponent(region)}`
+    const u = new URL(urlStr)
+    const isHttps = u.protocol === 'https:'
+    const mod = isHttps ? https : http
+    const opts = {
+      method: 'POST',
+      hostname: u.hostname,
+      port: u.port || (isHttps ? 443 : 80),
+      path: u.pathname + (u.search || ''),
+      headers: { 'Content-Type': ct || 'application/octet-stream', 'Content-Length': buf.length }
     }
-    res.send(j || text)
+    await new Promise((resolve) => {
+      try {
+        const req2 = mod.request(opts, (resp) => {
+          let data = ''
+          resp.on('data', (c) => { data += c })
+          resp.on('end', () => {
+            let j
+            try { j = JSON.parse(data) } catch (_e) { j = null }
+            if (resp.statusCode && resp.statusCode >= 400) {
+              res.status(resp.statusCode).send(j || data)
+              resolve()
+              return
+            }
+            if (j && j.plate) {
+              const conf = typeof j.confidence === 'number' ? j.confidence : (Number(j.confidence) || 0)
+              const out = { results: [{ plate: j.plate, confidence: conf }], raw: j.raw }
+              res.json(out)
+              resolve()
+              return
+            }
+            res.send(j || data)
+            resolve()
+          })
+        })
+        req2.on('error', (e) => { res.status(500).json({ error: 'proxy_failed', detail: String(e && e.message || e) }); resolve() })
+        req2.write(buf)
+        req2.end()
+      } catch (e) {
+        res.status(500).json({ error: 'proxy_failed', detail: String(e && e.message || e) })
+        resolve()
+      }
+    })
   } catch (e) {
     res.status(500).json({ error: 'proxy_failed', detail: String(e && e.message || e) })
+  }
+})
+
+app.get('/api/fastapi-health', async (_req, res) => {
+  try {
+    const base = FASTAPI_BASE
+    if (!/^https?:\/\//i.test(base)) {
+      res.status(500).json({ ok: false, error: 'proxy_not_configured' })
+      return
+    }
+    const u = new URL(base + '/health')
+    const isHttps = u.protocol === 'https:'
+    const mod = isHttps ? https : http
+    const opts = {
+      method: 'GET',
+      hostname: u.hostname,
+      port: u.port || (isHttps ? 443 : 80),
+      path: u.pathname + (u.search || '')
+    }
+    const result = await new Promise((resolve) => {
+      try {
+        const req2 = mod.request(opts, (resp) => {
+          let data = ''
+          resp.on('data', (c) => { data += c })
+          resp.on('end', () => {
+            let j
+            try { j = JSON.parse(data) } catch (_e) { j = null }
+            resolve({ statusCode: resp.statusCode || 200, body: j || data })
+          })
+        })
+        req2.on('error', () => resolve({ statusCode: 500, body: { ok: false, error: 'proxy_failed' } }))
+        req2.end()
+      } catch (_e) {
+        resolve({ statusCode: 500, body: { ok: false, error: 'proxy_failed' } })
+      }
+    })
+    if (result.statusCode >= 400) {
+      res.status(result.statusCode).send(result.body)
+      return
+    }
+    res.send(result.body)
+  } catch (e) {
+    res.status(500).json({ ok: false, error: 'proxy_failed', detail: String(e && e.message || e) })
   }
 })
 
