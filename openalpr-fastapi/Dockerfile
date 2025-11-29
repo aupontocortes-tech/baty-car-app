@@ -1,20 +1,21 @@
-FROM ubuntu:22.04
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential cmake git pkg-config \
-    python3 python3-pip \
-    libopencv-dev libtesseract-dev libleptonica-dev liblog4cplus-dev libcurl4-openssl-dev \
-    && rm -rf /var/lib/apt/lists/*
-RUN git clone https://github.com/openalpr/openalpr.git /opt/openalpr
-WORKDIR /opt/openalpr/src
-RUN cmake . && make && make install && ldconfig
-RUN mkdir -p /etc/openalpr && cp -r /opt/openalpr/runtime_data /etc/openalpr/runtime_data
+FROM python:3.10-slim
+
 WORKDIR /app
-COPY requirements.txt /app/requirements.txt
-RUN python3 -m pip install --no-cache-dir -r requirements.txt
-COPY main.py /app/main.py
-COPY start.sh /app/start.sh
-RUN chmod +x /app/start.sh
-ENV PORT=10000
-EXPOSE 10000
-CMD ["/app/start.sh"]
+
+RUN apt-get update && \
+    apt-get install -y libopencv-dev wget unzip && \
+    apt-get clean
+
+RUN wget `https://github.com/openalpr/openalpr/releases/download/v2.3.0/openalpr-2.3.0-ubuntu-20.04.tar.gz`  -O /tmp/openalpr.tar.gz && \
+    tar -xzf /tmp/openalpr.tar.gz -C /usr/local --strip-components=1
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+RUN chmod +x start.sh
+
+EXPOSE 8000
+
+CMD ["./start.sh"]
