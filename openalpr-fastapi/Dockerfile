@@ -15,8 +15,11 @@ RUN apt-get update && apt-get install -y \
     && pip install --no-cache-dir -r requirements.txt \
     && apt-get clean
 
-RUN wget https://github.com/openalpr/openalpr/releases/download/v2.3.0/openalpr-2.3.0-ubuntu-20.04.tar.gz -O /tmp/openalpr.tar.gz && \
-    tar -xzf /tmp/openalpr.tar.gz -C /usr/local --strip-components=1
+RUN apt-get update && apt-get install -y \
+    openalpr \
+    openalpr-daemon \
+    openalpr-utils \
+    libopenalpr-dev
 
 COPY . /app
 
