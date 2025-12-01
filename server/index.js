@@ -6,6 +6,7 @@ const path = require('path')
 const { exec } = require('child_process')
 const http = require('http')
 const https = require('https')
+const fetch = require('node-fetch')
 
 const app = express()
 app.use(cors())
