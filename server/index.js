@@ -509,8 +509,29 @@ app.get('/api/recognize-url', async (req, res) => {
     }
   }
   if (!parsed) {
-    res.status(500).json(lastError || { error: 'unknown' })
-    return
+    try {
+      const buf = await fs.promises.readFile(tmpPath)
+      const secret = process.env.OPENALPR_API_KEY || 'sk_DEMO'
+      const regionTry = regionBase
+      const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionTry)}&return_image=0&topn=10`
+      const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
+      let out
+      if (!respV2.ok && (respV2.status === 401 || respV2.status === 403)) {
+        const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionTry)}&return_image=0&topn=10`
+        const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
+        if (!respV3.ok) throw new Error(`status_${respV3.status}`)
+        out = await respV3.json()
+      } else if (!respV2.ok) {
+        throw new Error(`status_${respV2.status}`)
+      } else {
+        out = await respV2.json()
+      }
+      parsed = out
+      usedRegion = regionTry
+    } catch (e) {
+      res.status(500).json(lastError || { error: 'unknown', detail: String(e && e.message || e) })
+      return
+    }
   }
   const results = Array.isArray(parsed.results) ? parsed.results : []
   const plates = results.map(r => ({
