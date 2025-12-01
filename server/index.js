@@ -552,8 +552,22 @@ const PORT = process.env.PORT || 5000
 app.listen(PORT, () => {
   console.log(`server: http://localhost:${PORT}`)
 })
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, regionDefault: (process.env.ALPR_REGION || 'br') })
+app.get('/api/health', async (req, res) => {
+  try {
+    res.json({ ok: true, ts: Date.now(), uptime: process.uptime() })
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) })
+  }
+})
+
+app.get('/api/fetch-test', async (req, res) => {
+  try {
+    const r = await fetch('https://httpbin.org/get', { headers: { 'User-Agent': 'BatyCarApp/1.0' } })
+    const txt = await r.text()
+    res.json({ ok: r.ok, status: r.status, length: txt.length })
+  } catch (e) {
+    res.status(500).json({ error: 'fetch_failed', detail: String(e && e.message || e) })
+  }
 })
 
 const clientBuildDir = path.join(__dirname, '../client/build')
