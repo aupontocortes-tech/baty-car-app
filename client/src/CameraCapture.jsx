@@ -78,9 +78,9 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const base = ((process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim()) || window.location.origin).replace(/\/+$/,'')
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 8000)
-      const u1 = `${base}/read-plate?region=br`
+      const u1 = `${base}/api/recognize?region=br`
       const fd = new FormData()
-      fd.append('file', file)
+      fd.append('frame', file)
       try {
         const resp = await fetch(u1, { method: 'POST', body: fd, signal: controller.signal })
         let j = null
