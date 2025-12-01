@@ -7,14 +7,14 @@ services:
     startCommand: npm run server
     autoDeploy: true
     envVars:
-      - key: PORT
-        value: 5000
       - key: OPENALPR_API_KEY
         value: sk_DEMO
       - key: ALPR_REGION
         value: br
       - key: FASTAPI_BASE
         value: https://openalpr-fastapi-1.onrender.com
+      - key: REACT_APP_API_BASE
+        value: /
 
   - type: web
     name: openalpr-fastapi-1

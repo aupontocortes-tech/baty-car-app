@@ -75,47 +75,33 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       }
       const file = new File([blob], 'frame.jpg', { type: 'image/jpeg' })
       let data
+      const base = ((process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim()) || window.location.origin).replace(/\/+$/,'')
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000)
+      const u1 = `${base}/read-plate?region=br`
+      const fd = new FormData()
+      fd.append('file', file)
       try {
-        const origin = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : ''
-        const preferSameOrigin = /^https:/i.test(origin)
-        const runtimeBase = process.env.REACT_APP_API_BASE || ''
-        const base = preferSameOrigin ? '' : runtimeBase.replace(/\/+$/,'')
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 8000)
-        const tryUrls = [
-          `${base}/read-plate?region=br`,
-          `${base}/api/recognize-bytes?region=br`,
-          `${base}/api/recognize?region=br`
-        ]
-        let lastErr = null
-        for (const u of tryUrls) {
-          try {
-            const resp = await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob, signal: controller.signal })
-            let j = null
-            try { j = await resp.json() } catch (_e) { j = null }
-            if (!resp.ok) {
-              if (j && (j.error || j.plates || j.results)) {
-                data = j
-                lastErr = null
-                break
-              }
-              throw new Error(`status_${resp.status}`)
-            }
-            data = j || {}
-            lastErr = null
-            break
-          } catch (e) {
-            lastErr = e
+        const resp = await fetch(u1, { method: 'POST', body: fd, signal: controller.signal })
+        let j = null
+        try { j = await resp.json() } catch (_e) { j = null }
+        if (!resp.ok) {
+          if (j && (j.error || j.plates || j.results)) {
+            data = j
+          } else {
+            throw new Error(`status_${resp.status}`)
           }
+        } else {
+          data = j || {}
         }
-        clearTimeout(timeoutId)
-        if (lastErr) throw lastErr
-      } catch (e) {
-        const info = { error: 'fetch_failed', detail: String(e && e.message || e) }
+      } catch (e2) {
+        const info = { error: 'fetch_failed', detail: String(e2 && e2.message || e2) }
         if (onRaw) onRaw(info)
         if (onError) onError(info)
+        clearTimeout(timeoutId)
         return
       }
+      clearTimeout(timeoutId)
       if (onRaw) onRaw(data)
       if (data && data.error) {
         if (onError) onError({ error: data.error, detail: data.detail || data.raw || '' })
@@ -127,14 +113,12 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       if (plate) {
         const conf = typeof (first && first.confidence) === 'number' ? first.confidence : Number(first && first.confidence) || 0
         if (onRecognize) onRecognize([{ plate, confidence: conf }])
-      } else {
-        const plates = Array.isArray(data.plates) ? data.plates : []
-        if (plates.length && onRecognize) {
-          onRecognize(plates)
         } else {
-          if (onError) onError({ error: 'no_plate', detail: 'Nenhuma placa encontrada' })
+          const plates = Array.isArray(data.plates) ? data.plates : []
+          if (plates.length && onRecognize) {
+            onRecognize(plates)
+          }
         }
-      }
     } finally {
       setBusy(false)
     }
