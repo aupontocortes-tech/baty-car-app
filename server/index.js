@@ -505,6 +505,7 @@ app.get('/api/fastapi-health', async (_req, res) => {
 
 const downloadToFile = (fileUrl, destPath) => new Promise((resolve, reject) => {
   try {
+    const timeoutMs = Number(process.env.DOWNLOAD_TIMEOUT_MS || 10000)
     const mod = fileUrl.startsWith('https') ? https : http
     const req = mod.get(fileUrl, (resp) => {
       if (resp.statusCode && resp.statusCode >= 400) {
@@ -515,8 +516,15 @@ const downloadToFile = (fileUrl, destPath) => new Promise((resolve, reject) => {
       resp.pipe(ws)
       ws.on('finish', () => ws.close(() => resolve(destPath)))
       ws.on('error', (e) => reject(e))
+      resp.on('error', (e) => reject(e))
+      resp.setTimeout(timeoutMs, () => {
+        try { resp.destroy(new Error('download_timeout')) } catch (_) {}
+      })
     })
     req.on('error', (e) => reject(e))
+    req.setTimeout(timeoutMs, () => {
+      try { req.destroy(new Error('download_timeout')) } catch (_) {}
+    })
   } catch (e) {
     reject(e)
   }
