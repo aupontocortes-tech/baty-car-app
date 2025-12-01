@@ -135,25 +135,40 @@ app.post('/api/recognize', upload.single('frame'), async (req, res) => {
     try {
       const buf = await fs.promises.readFile(filePath)
       const secret = process.env.OPENALPR_API_KEY || 'sk_DEMO'
-      const regionTry = regionBase
-      const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionTry)}&return_image=0&topn=10`
-      const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-      let out
-      if (!respV2.ok && (respV2.status === 401 || respV2.status === 403)) {
-        const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionTry)}&return_image=0&topn=10`
+      const preferred = regionBase
+      const regionsV2 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
+      const regionsV3 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
+      let out = null
+      for (const r of regionsV2) {
+        const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
         const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-        if (!respV3.ok) throw new Error(`status_${respV3.status}`)
-        out = await respV3.json()
-      } else if (!respV2.ok) {
-        throw new Error(`status_${respV2.status}`)
-      } else {
-        out = await respV2.json()
+        if (respV3.ok) {
+          const maybe3 = await respV3.json()
+          const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
+          if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
+        }
+        const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
+        const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
+        if (respV2.ok) {
+          const maybe = await respV2.json()
+          const arr = Array.isArray(maybe.results) ? maybe.results : []
+          if (arr.length > 0) { out = maybe; usedRegion = r; break }
+        }
       }
-      parsed = out
-      usedRegion = regionTry
-    } catch (e) {
-      res.status(500).json(lastError || { error: 'unknown', detail: String(e && e.message || e) })
-      return
+      if (!out) {
+        for (const r of regionsV3) {
+          const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=20`
+          const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
+          if (respV3.ok) {
+            const maybe3 = await respV3.json()
+            const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
+            if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
+          }
+        }
+      }
+      parsed = out || { results: [] }
+    } catch (_e) {
+      parsed = { results: [] }
     }
   }
   const results = Array.isArray(parsed.results) ? parsed.results : []
@@ -219,25 +234,40 @@ app.post('/api/recognize-bytes', async (req, res) => {
     if (!parsed) {
       try {
         const secret = process.env.OPENALPR_API_KEY || 'sk_DEMO'
-        const regionTry = regionBase
-        const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionTry)}&return_image=0&topn=10`
-        const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-        let out
-        if (!respV2.ok && (respV2.status === 401 || respV2.status === 403)) {
-          const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionTry)}&return_image=0&topn=10`
+        const preferred = regionBase
+        const regionsV2 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
+        const regionsV3 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
+        let out = null
+        for (const r of regionsV2) {
+          const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
           const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-          if (!respV3.ok) throw new Error(`status_${respV3.status}`)
-          out = await respV3.json()
-        } else if (!respV2.ok) {
-          throw new Error(`status_${respV2.status}`)
-        } else {
-          out = await respV2.json()
+          if (respV3.ok) {
+            const maybe3 = await respV3.json()
+            const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
+            if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
+          }
+          const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
+          const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
+          if (respV2.ok) {
+            const maybe = await respV2.json()
+            const arr = Array.isArray(maybe.results) ? maybe.results : []
+            if (arr.length > 0) { out = maybe; usedRegion = r; break }
+          }
         }
-        parsed = out
-        usedRegion = regionTry
-      } catch (e) {
-        res.status(500).json(lastError || { error: 'unknown', detail: String(e && e.message || e) })
-        return
+        if (!out) {
+          for (const r of regionsV3) {
+            const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=20`
+            const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
+            if (respV3.ok) {
+              const maybe3 = await respV3.json()
+              const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
+              if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
+            }
+          }
+        }
+        parsed = out || { results: [] }
+      } catch (_e) {
+        parsed = { results: [] }
       }
     }
     const results = Array.isArray(parsed.results) ? parsed.results : []
@@ -315,25 +345,40 @@ app.post('/api/read-plate', async (req, res) => {
     if (!parsed) {
       try {
         const secret = process.env.OPENALPR_API_KEY || 'sk_DEMO'
-        const regionTry = regionBase
-        const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionTry)}&return_image=0&topn=10`
-        const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-        let out
-        if (!respV2.ok && (respV2.status === 401 || respV2.status === 403)) {
-          const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionTry)}&return_image=0&topn=10`
+        const preferred = regionBase
+        const regionsV2 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
+        const regionsV3 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
+        let out = null
+        for (const r of regionsV2) {
+          const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
           const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-          if (!respV3.ok) throw new Error(`status_${respV3.status}`)
-          out = await respV3.json()
-        } else if (!respV2.ok) {
-          throw new Error(`status_${respV2.status}`)
-        } else {
-          out = await respV2.json()
+          if (respV3.ok) {
+            const maybe3 = await respV3.json()
+            const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
+            if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
+          }
+          const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
+          const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
+          if (respV2.ok) {
+            const maybe = await respV2.json()
+            const arr = Array.isArray(maybe.results) ? maybe.results : []
+            if (arr.length > 0) { out = maybe; usedRegion = r; break }
+          }
         }
-        parsed = out
-        usedRegion = regionTry
-      } catch (e) {
-        res.status(500).json(lastError || { error: 'unknown', detail: String(e && e.message || e) })
-        return
+        if (!out) {
+          for (const r of regionsV3) {
+            const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=20`
+            const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
+            if (respV3.ok) {
+              const maybe3 = await respV3.json()
+              const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
+              if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
+            }
+          }
+        }
+        parsed = out || { results: [] }
+      } catch (_e) {
+        parsed = { results: [] }
       }
     }
     const results = Array.isArray(parsed.results) ? parsed.results : []
@@ -512,25 +557,40 @@ app.get('/api/recognize-url', async (req, res) => {
     try {
       const buf = await fs.promises.readFile(tmpPath)
       const secret = process.env.OPENALPR_API_KEY || 'sk_DEMO'
-      const regionTry = regionBase
-      const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionTry)}&return_image=0&topn=10`
-      const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-      let out
-      if (!respV2.ok && (respV2.status === 401 || respV2.status === 403)) {
-        const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(regionTry)}&return_image=0&topn=10`
+      const preferred = regionBase
+      const regionsV2 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
+      const regionsV3 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
+      let out = null
+      for (const r of regionsV2) {
+        const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
         const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-        if (!respV3.ok) throw new Error(`status_${respV3.status}`)
-        out = await respV3.json()
-      } else if (!respV2.ok) {
-        throw new Error(`status_${respV2.status}`)
-      } else {
-        out = await respV2.json()
+        if (respV3.ok) {
+          const maybe3 = await respV3.json()
+          const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
+          if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
+        }
+        const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
+        const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
+        if (respV2.ok) {
+          const maybe = await respV2.json()
+          const arr = Array.isArray(maybe.results) ? maybe.results : []
+          if (arr.length > 0) { out = maybe; usedRegion = r; break }
+        }
       }
-      parsed = out
-      usedRegion = regionTry
-    } catch (e) {
-      res.status(500).json(lastError || { error: 'unknown', detail: String(e && e.message || e) })
-      return
+      if (!out) {
+        for (const r of regionsV3) {
+          const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=20`
+          const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
+          if (respV3.ok) {
+            const maybe3 = await respV3.json()
+            const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
+            if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
+          }
+        }
+      }
+      parsed = out || { results: [] }
+    } catch (_e) {
+      parsed = { results: [] }
     }
   }
   const results = Array.isArray(parsed.results) ? parsed.results : []
