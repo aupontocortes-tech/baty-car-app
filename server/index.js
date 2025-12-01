@@ -535,8 +535,42 @@ app.get('/api/recognize-url', async (req, res) => {
   try {
     await downloadToFile(url, tmpPath)
   } catch (e) {
-    res.status(500).json({ error: 'download_failed', detail: String(e && e.message || e) })
-    return
+    try {
+      const secret = process.env.OPENALPR_API_KEY || 'sk_DEMO'
+      const preferred = regionBase
+      const regions = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
+      let out = null
+      for (const r of regions) {
+        const urlV3 = `https://api.openalpr.com/v3/recognize_url?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50&url=${encodeURIComponent(url)}`
+        const respV3 = await fetch(urlV3, { headers: { 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' } })
+        if (respV3.ok) {
+          const maybe3 = await respV3.json()
+          const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
+          if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
+        }
+        const urlV2 = `https://api.openalpr.com/v2/recognize_url?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50&url=${encodeURIComponent(url)}`
+        const respV2 = await fetch(urlV2, { headers: { 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' } })
+        if (respV2.ok) {
+          const maybe = await respV2.json()
+          const arr = Array.isArray(maybe.results) ? maybe.results : []
+          if (arr.length > 0) { out = maybe; usedRegion = r; break }
+        }
+      }
+      const results = Array.isArray(out && out.results) ? out.results : []
+      const plates = results.map(r => ({
+        plate: r.plate,
+        confidence: typeof r.confidence === 'number' ? r.confidence : Number(r.confidence) || 0,
+        region: usedRegion,
+        candidates: Array.isArray(r.candidates)
+          ? r.candidates.map(c => ({ plate: c.plate, confidence: typeof c.confidence === 'number' ? c.confidence : Number(c.confidence) || 0 }))
+          : []
+      }))
+      res.json({ plates, meta: { processing_time_ms: out && out.processing_time_ms || null, regionTried: regions } })
+      return
+    } catch (_e) {
+      res.json({ plates: [], meta: { processing_time_ms: null, regionTried: [regionBase, 'us'] }, error: 'download_failed' })
+      return
+    }
   }
   const order = [regionBase, 'us']
   let parsed = null
