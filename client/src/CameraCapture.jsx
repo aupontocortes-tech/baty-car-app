@@ -75,7 +75,9 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       let data
       const origin = typeof window !== 'undefined' ? window.location.origin : ''
       const isDevCRA = /localhost:3000$/i.test(origin)
-      const base = (((process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim())) || (isDevCRA ? 'http://localhost:5000' : origin)).replace(/\/+$/,'')
+      const host = (() => { try { return new URL(origin).host } catch (_e) { return origin } })()
+      const isVercel = /vercel\.app$/i.test(String(host))
+      const base = (((process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim())) || (isDevCRA ? 'http://localhost:5000' : (isVercel ? 'https://baty-car-app-1.onrender.com' : origin))).replace(/\/+$/,'')
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 8000)
       const u1 = `${base}/api/recognize?region=br`
