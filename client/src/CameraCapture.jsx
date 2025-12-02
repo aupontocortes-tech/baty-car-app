@@ -11,41 +11,26 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
   const [status, setStatus] = useState('aguardando')
   const [procToggle, setProcToggle] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
+  const [sendFullFrame, setSendFullFrame] = useState(false)
   const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent)
 
   const start = async () => {
-    if (ready) {
-      setActive(true)
-      setStatus('lendo')
-      return
-    }
     try {
-      const constraints = { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } }
-      let stream
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints)
-      } catch (_err) {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true })
-      }
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await videoRef.current.play()
-        try {
-          const t = stream.getVideoTracks && stream.getVideoTracks()[0]
-          trackRef.current = t || null
-          // não ligar o flash automaticamente; só por clique
-        } catch (_e) {}
-        setReady(true)
-        setActive(true)
-        setStatus('lendo')
-      }
+      setActive(true)
+      setStatus('aguardando')
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+      videoRef.current.srcObject = stream
+      trackRef.current = stream.getVideoTracks && stream.getVideoTracks()[0]
+      await videoRef.current.play()
+      setReady(true)
+      setStatus('lendo')
     } catch (e) {
-      setReady(false)
-      setStatus(e && e.name === 'NotAllowedError' ? 'permissao_negada' : (e && e.name === 'NotFoundError' ? 'camera_nao_encontrada' : 'erro_camera'))
+      const msg = String((e && e.name) || '')
+      if (msg === 'NotAllowedError') setStatus('permissao_negada')
+      else if (msg === 'NotFoundError') setStatus('camera_nao_encontrada')
+      else setStatus('erro_camera')
     }
   }
-
-  
 
   const capture = async () => {
     if (!videoRef.current) return
@@ -61,10 +46,23 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       srcCanvas.height = targetH
       const sctx = srcCanvas.getContext('2d')
       sctx.drawImage(video, 0, 0, targetW, targetH)
-      const frameCanvas = srcCanvas
-        let blob = await new Promise(resolve => frameCanvas.toBlob(resolve, 'image/jpeg', 0.92))
+      // crop central region unless sending full frame
+      let frameCanvas = srcCanvas
+      if (!sendFullFrame) {
+        const cropW = Math.round(targetW * 0.8)
+        const cropH = Math.round(targetH * 0.35)
+        const cropX = Math.round((targetW - cropW) / 2)
+        const cropY = Math.round((targetH - cropH) / 2)
+        const cropCanvas = document.createElement('canvas')
+        cropCanvas.width = cropW
+        cropCanvas.height = cropH
+        const cctx = cropCanvas.getContext('2d')
+        cctx.drawImage(srcCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH)
+        frameCanvas = cropCanvas
+      }
+      let blob = await new Promise(resolve => frameCanvas.toBlob(resolve, 'image/jpeg', 0.96))
       if (!blob) {
-        const dataUrl = frameCanvas.toDataURL('image/jpeg', 0.7)
+        const dataUrl = frameCanvas.toDataURL('image/jpeg', 0.9)
         const comma = dataUrl.indexOf(',')
         const b64 = dataUrl.slice(comma + 1)
         const bin = atob(b64)
@@ -75,7 +73,9 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       }
       const file = new File([blob], 'frame.jpg', { type: 'image/jpeg' })
       let data
-      const base = ((process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim()) || window.location.origin).replace(/\/+$/,'')
+      const origin = typeof window !== 'undefined' ? window.location.origin : ''
+      const isDevCRA = /localhost:3000$/i.test(origin)
+      const base = (((process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim())) || (isDevCRA ? 'http://localhost:5000' : origin)).replace(/\/+$/,'')
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 8000)
       const u1 = `${base}/api/recognize?region=br`
@@ -106,19 +106,16 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       if (data && data.error) {
         if (onError) onError({ error: data.error, detail: data.detail || data.raw || '' })
       }
-      const regions = Array.isArray(data?.regions) ? data.regions : []
-      const alprFailed = !!(data && data.alpr_failed)
-      const first = Array.isArray(data?.results) ? data.results[0] : null
+      const first = Array.isArray(data?.plates) ? data.plates[0] : null
       const plate = (first && first.plate) ? first.plate : ''
       if (plate) {
         const conf = typeof (first && first.confidence) === 'number' ? first.confidence : Number(first && first.confidence) || 0
         if (onRecognize) onRecognize([{ plate, confidence: conf }])
-        } else {
-          const plates = Array.isArray(data.plates) ? data.plates : []
-          if (plates.length && onRecognize) {
-            onRecognize(plates)
-          }
-        }
+      } else {
+        const resultsFirst = Array.isArray(data?.results) ? data.results[0] : null
+        const plate2 = (resultsFirst && resultsFirst.plate) ? resultsFirst.plate : ''
+        if (plate2 && onRecognize) onRecognize([{ plate: plate2, confidence: Number(resultsFirst.confidence) || 0 }])
+      }
     } finally {
       setBusy(false)
     }
@@ -135,7 +132,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
     if (!timerRef.current) {
       timerRef.current = setInterval(() => {
         if (!busy) capture()
-      }, 200)
+      }, 350)
     }
     return () => {
       if (timerRef.current) {
@@ -143,7 +140,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         timerRef.current = null
       }
     }
-  }, [active, ready, busy])
+  }, [active, ready, busy, sendFullFrame])
 
   useEffect(() => {
     return () => {
@@ -151,9 +148,6 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       if (s && s.getTracks) s.getTracks().forEach(t => t.stop())
     }
   }, [])
-
-  // iniciar somente ao clicar em "Ler Placas"
-
 
   const toggleTorch = async () => {
     const t = trackRef.current
@@ -187,13 +181,16 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
           <div className="frame" />
         </div>
       </div>
-      <div className="actions">
+      <div className="actions" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button className="button" onClick={active ? stop : start} disabled={!active && busy}>
           {active ? 'Parar Leitura' : 'Ler Placas'}
         </button>
         <button className="button" onClick={toggleTorch} title={torchOn ? 'Desligar flash' : 'Ligar flash'} style={{ width: 44 }}>
           ⚡
         </button>
+        <label style={{ fontSize: 12, color: '#5b6b84' }}>
+          <input type="checkbox" checked={sendFullFrame} onChange={e => setSendFullFrame(e.target.checked)} /> Enviar quadro inteiro
+        </label>
       </div>
       {!active && (
         <div style={{ marginTop: 10, textAlign: 'center', color: '#5b6b84', fontSize: 14 }}>

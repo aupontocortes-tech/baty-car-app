@@ -1,21 +1,27 @@
 # OpenALPR FastAPI Backend
 
-Este é um backend FastAPI que expõe:
+Backend FastAPI que expõe:
 
-- GET /
-- GET /health
-- POST /read-plate
+- GET `/`  
+- GET `/health`  
+- POST `/read-plate`
 
-Construído para rodar no Render usando Docker.
+Ele usa o binário `alpr` (OpenALPR) via linha de comando.
 
+## Como construir e executar com Docker
 
-📌 Tarefas finais:
+1. Construa a imagem:
+   - Na raiz do projeto, rode:  
+     `docker build -t openalpr-fastapi ./openalpr-fastapi`
 
-Criar todos os arquivos acima.
+2. Execute o container:
+   - `docker run --rm -p 8000:8000 openalpr-fastapi`
 
-Confirmar que todos foram salvos corretamente.
+3. Teste os endpoints:
+   - Saúde: `http://localhost:8000/health`
+   - Leitura de placa (multipart/form-data): `POST http://localhost:8000/read-plate` com o arquivo de imagem no campo `file` e opcional `region` (`br`, `eu`, `us`, etc.).
 
-Fazer commit automático no GitHub.
-
-FIM DO PROMPT
+## Observações
+- O Dockerfile agora compila o OpenALPR a partir do código-fonte em `ubuntu:20.04`, evitando links quebrados de binários pré-compilados.
+- O aviso do pip sobre rodar como root em Docker é esperado; o ambiente do container é isolado.
 

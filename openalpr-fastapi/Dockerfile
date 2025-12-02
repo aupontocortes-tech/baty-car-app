@@ -1,25 +1,37 @@
-FROM python:3.10-slim
+FROM ubuntu:20.04
 
-WORKDIR /app
+ENV DEBIAN_FRONTEND=noninteractive
 
-COPY requirements.txt /app/
+# Dependências de sistema e bibliotecas necessárias
 RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    git \
+    cmake \
+    build-essential \
     libopencv-dev \
-    wget \
-    unzip \
     libleptonica-dev \
     libtesseract-dev \
     tesseract-ocr \
     tesseract-ocr-eng \
-    build-essential \
-    && pip install --no-cache-dir -r requirements.txt \
-    && apt-get clean
+    liblog4cplus-dev \
+    libcurl4-openssl-dev \
+    wget \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update && apt-get install -y \
-    openalpr \
-    openalpr-daemon \
-    openalpr-utils \
-    libopenalpr-dev
+# Compila e instala o OpenALPR a partir do código-fonte
+RUN git clone https://github.com/openalpr/openalpr.git /tmp/openalpr && \
+    cd /tmp/openalpr/src && mkdir build && cd build && \
+    cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_INSTALL_SYSCONFDIR:PATH=/etc .. && \
+    make -j$(nproc) && \
+    make install && \
+    rm -rf /tmp/openalpr
+
+WORKDIR /app
+
+COPY requirements.txt /app/
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 COPY . /app
 

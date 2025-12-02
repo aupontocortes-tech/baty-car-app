@@ -2,10 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react'
 import CameraCapture from './CameraCapture'
 import ResultsTable from './ResultsTable'
  
-
 export default function App() {
   const [records, setRecords] = useState([])
-  const minConfidence = 40
+  const minConfidence = 30
   const seen = useMemo(() => new Set(records.map(r => r.plate)), [records])
   const lastPlates = useMemo(() => records.slice(0, 5).map(r => r.plate), [records])
   const API_BASE = (process.env.REACT_APP_API_BASE || '').replace(/\/+$/,'')
@@ -17,20 +16,20 @@ export default function App() {
   const [manualPlate, setManualPlate] = useState('')
   const [installEvt, setInstallEvt] = useState(null)
 
-
   const beep = () => {
     try {
-      const Ctx = window.AudioContext || window.webkitAudioContext
-      const ctx = new Ctx()
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = 'sine'
-      osc.frequency.value = 880
-      gain.gain.setValueAtTime(0.15, ctx.currentTime)
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.start()
-      osc.stop(ctx.currentTime + 0.12)
+      const ctx = new (window.AudioContext || window.webkitAudioContext)()
+      const o = ctx.createOscillator()
+      const g = ctx.createGain()
+      o.type = 'sine'
+      o.frequency.setValueAtTime(880, ctx.currentTime)
+      g.gain.setValueAtTime(0.001, ctx.currentTime)
+      g.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01)
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2)
+      o.connect(g)
+      g.connect(ctx.destination)
+      o.start()
+      setTimeout(() => o.stop(), 220)
     } catch (_e) {}
   }
 
@@ -72,9 +71,14 @@ export default function App() {
     if (debug) setDebugInfo({ items })
   }
 
-  const handleClear = () => setRecords([])
+  const promptInstall = () => {
+    try {
+      if (!installEvt) return
+      installEvt.prompt()
+    } catch (_e) {}
+  }
 
-  
+  const handleClear = () => setRecords([])
 
   const downloadExcel = async () => {
     try {
@@ -104,7 +108,6 @@ export default function App() {
     window.addEventListener('beforeinstallprompt', handler)
     return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
-  
 
   const handleManualRegister = () => {
     const normalize = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -125,23 +128,6 @@ export default function App() {
     setSuccessPlate(p)
     setTimeout(() => setSuccessPlate(''), 900)
     setErrorMsg('')
-  }
-
-  const promptInstall = async () => {
-    try {
-      const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent)
-      if (isIOS) {
-        alert('No iPhone/iPad: Compartilhar ▶ Adicionar à Tela de Início')
-        return
-      }
-      if (installEvt) {
-        await installEvt.prompt()
-        await installEvt.userChoice
-        setInstallEvt(null)
-      } else {
-        alert('No Android: menu do navegador ▶ Instalar aplicativo')
-      }
-    } catch (_e) {}
   }
 
   return (
