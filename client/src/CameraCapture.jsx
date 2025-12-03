@@ -12,15 +12,15 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
   const [procToggle, setProcToggle] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
   const [sendFullFrame, setSendFullFrame] = useState(false)
-  const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent)
+  const isAndroid = /Android/i.test(navigator.userAgent)
 
-  // Definir envio de quadro inteiro por padrão em domínios Vercel
+  // Não forçar quadro inteiro por padrão na Vercel; manter recorte (melhor para leitura)
   useEffect(() => {
     try {
       const origin = typeof window !== 'undefined' ? window.location.origin : ''
       const host = (() => { try { return new URL(origin).host } catch (_e) { return origin } })()
       const isVercel = /vercel\.app$/i.test(String(host))
-      if (isVercel && !sendFullFrame) setSendFullFrame(true)
+      if (isVercel) setSendFullFrame(false)
     } catch (_) {}
   }, [])
 
@@ -59,8 +59,8 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       // crop central region unless sending full frame
       let frameCanvas = srcCanvas
       if (!sendFullFrame) {
-        const cropW = Math.round(targetW * 0.85)
-        const cropH = Math.round(targetH * 0.5) // aumentar altura para Vercel/mobile
+        const cropW = Math.round(targetW * 0.9)
+        const cropH = Math.round(targetH * 0.65)
         const cropX = Math.round((targetW - cropW) / 2)
         const cropY = Math.round((targetH - cropH) / 2)
         const cropCanvas = document.createElement('canvas')
@@ -103,7 +103,6 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       }
 
       let best = null
-      // ORDEM OTIMIZADA PARA PRODUÇÃO: 1) FastAPI, 2) recognize multipart, 3) recognize-bytes
       // 1) FastAPI via /read-plate (multipart/form-data com campo "file")
       {
         const controller2 = new AbortController()
@@ -117,9 +116,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
           try { j2 = await resp2.json() } catch (_e) { j2 = null }
           if (onRaw) onRaw({ step: 'read-plate', data: j2 })
           best = pickPlateFromData(j2)
-        } catch (_e) {
-          // continua para próxima tentativa
-        }
+        } catch (_e) {}
         clearTimeout(timeoutId2)
       }
 
@@ -155,9 +152,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
           try { j3 = await resp3.json() } catch (_e) { j3 = null }
           if (onRaw) onRaw({ step: 'recognize-bytes', data: j3 })
           best = pickPlateFromData(j3)
-        } catch (_e) {
-          // silêncio
-        }
+        } catch (_e) {}
         clearTimeout(timeoutId3)
       }
 
@@ -178,7 +173,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
     if (!timerRef.current) {
       timerRef.current = setInterval(() => {
         if (!busy) capture()
-      }, 350)
+      }, 250)
     }
     return () => {
       if (timerRef.current) {
