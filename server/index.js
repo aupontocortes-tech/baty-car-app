@@ -9,7 +9,32 @@ const https = require('https')
 const fetch = require('node-fetch')
 
 const app = express()
-app.use(cors())
+// CORS: permitir Vercel e localhost, métodos e headers necessários
+const allowedOrigins = ['https://baty-car-app.vercel.app', 'http://localhost:3000']
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true)
+    const ok = allowedOrigins.includes(origin)
+    return callback(ok ? null : new Error('Not allowed by CORS'), ok)
+  },
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+  credentials: false,
+  optionsSuccessStatus: 204
+}
+app.use(cors(corsOptions))
+app.options('*', cors(corsOptions))
+// headers explícitos para toda resposta (inclui pré-flight)
+app.use((req, res, next) => {
+  const origin = req.headers.origin
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin)
+  }
+  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With')
+  if (req.method === 'OPTIONS') return res.sendStatus(204)
+  next()
+})
 app.use(express.json({ limit: '10mb' }))
 
 const uploadsDir = path.join(__dirname, 'uploads')
