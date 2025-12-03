@@ -104,13 +104,15 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
 
       let best = null
       // ORDEM OTIMIZADA PARA PRODUÇÃO: 1) FastAPI, 2) recognize multipart, 3) recognize-bytes
-      // 1) FastAPI via /read-plate (bytes)
+      // 1) FastAPI via /read-plate (multipart/form-data com campo "file")
       {
         const controller2 = new AbortController()
         const timeoutId2 = setTimeout(() => controller2.abort(), 12000)
         const u2 = `${base}/read-plate?region=br`
         try {
-          const resp2 = await fetch(u2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob, signal: controller2.signal, mode: 'cors', credentials: 'omit' })
+          const fd2 = new FormData()
+          fd2.append('file', file)
+          const resp2 = await fetch(u2, { method: 'POST', body: fd2, signal: controller2.signal, mode: 'cors', credentials: 'omit' })
           let j2 = null
           try { j2 = await resp2.json() } catch (_e) { j2 = null }
           if (onRaw) onRaw({ step: 'read-plate', data: j2 })
