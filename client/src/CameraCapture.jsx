@@ -78,6 +78,8 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const host = (() => { try { return new URL(origin).host } catch (_e) { return origin } })()
       const isVercel = /vercel\.app$/i.test(String(host))
       const base = (((process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim())) || (isDevCRA ? 'http://localhost:5000' : (isVercel ? 'https://baty-car-app-1.onrender.com' : origin))).replace(/\/+$/,'')
+
+      // 1) tentativa principal: multipart para /api/recognize
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 8000)
       const u1 = `${base}/api/recognize?region=br`
@@ -108,16 +110,57 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       if (data && data.error) {
         if (onError) onError({ error: data.error, detail: data.detail || data.raw || '' })
       }
-      const first = Array.isArray(data?.plates) ? data.plates[0] : null
-      const plate = (first && first.plate) ? first.plate : ''
-      if (plate) {
-        const conf = typeof (first && first.confidence) === 'number' ? first.confidence : Number(first && first.confidence) || 0
-        if (onRecognize) onRecognize([{ plate, confidence: conf }])
-      } else {
-        const resultsFirst = Array.isArray(data?.results) ? data.results[0] : null
+
+      const pickPlateFromData = (d) => {
+        const first = Array.isArray(d?.plates) ? d.plates[0] : null
+        const plate = (first && first.plate) ? first.plate : ''
+        if (plate) {
+          const conf = typeof (first && first.confidence) === 'number' ? first.confidence : Number(first && first.confidence) || 0
+          return { plate, confidence: conf }
+        }
+        const resultsFirst = Array.isArray(d?.results) ? d.results[0] : null
         const plate2 = (resultsFirst && resultsFirst.plate) ? resultsFirst.plate : ''
-        if (plate2 && onRecognize) onRecognize([{ plate: plate2, confidence: Number(resultsFirst.confidence) || 0 }])
+        if (plate2) return { plate: plate2, confidence: Number(resultsFirst.confidence) || 0 }
+        return null
       }
+
+      let best = pickPlateFromData(data)
+
+      // 2) fallback: proxy FastAPI via /read-plate (bytes)
+      if (!best) {
+        const controller2 = new AbortController()
+        const timeoutId2 = setTimeout(() => controller2.abort(), 7000)
+        const u2 = `${base}/read-plate?region=br`
+        try {
+          const resp2 = await fetch(u2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob, signal: controller2.signal })
+          let j2 = null
+          try { j2 = await resp2.json() } catch (_e) { j2 = null }
+          if (onRaw) onRaw({ step: 'read-plate', data: j2 })
+          best = pickPlateFromData(j2)
+        } catch (_e) {
+          // ignora erros e segue para o próximo fallback
+        }
+        clearTimeout(timeoutId2)
+      }
+
+      // 3) fallback adicional: /api/recognize-bytes (bytes)
+      if (!best) {
+        const controller3 = new AbortController()
+        const timeoutId3 = setTimeout(() => controller3.abort(), 7000)
+        const u3 = `${base}/api/recognize-bytes?region=br`
+        try {
+          const resp3 = await fetch(u3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob, signal: controller3.signal })
+          let j3 = null
+          try { j3 = await resp3.json() } catch (_e) { j3 = null }
+          if (onRaw) onRaw({ step: 'recognize-bytes', data: j3 })
+          best = pickPlateFromData(j3)
+        } catch (_e) {
+          // silêncio
+        }
+        clearTimeout(timeoutId3)
+      }
+
+      if (best && onRecognize) onRecognize([best])
     } finally {
       setBusy(false)
     }
