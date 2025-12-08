@@ -11,16 +11,16 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
   const [status, setStatus] = useState('aguardando')
   const [procToggle, setProcToggle] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
-  const [sendFullFrame, setSendFullFrame] = useState(false)
+  const [sendFullFrame, setSendFullFrame] = useState(true)
   const isAndroid = /Android/i.test(navigator.userAgent)
 
-  // Não forçar quadro inteiro por padrão na Vercel; manter recorte (melhor para leitura)
+  // Ajuste: manter quadro inteiro por padrão também na Vercel (pode melhorar leitura)
   useEffect(() => {
     try {
       const origin = typeof window !== 'undefined' ? window.location.origin : ''
       const host = (() => { try { return new URL(origin).host } catch (_e) { return origin } })()
       const isVercel = /vercel\.app$/i.test(String(host))
-      if (isVercel) setSendFullFrame(false)
+      if (isVercel) setSendFullFrame(true)
     } catch (_) {}
   }, [])
 
@@ -87,7 +87,24 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const isDevCRA = /localhost:3000$/i.test(origin)
       const host = (() => { try { return new URL(origin).host } catch (_e) { return origin } })()
       const isVercel = /vercel\.app$/i.test(String(host))
-      const base = (((process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim())) || (isDevCRA ? 'http://localhost:5000' : (isVercel ? 'https://baty-car-app-1.onrender.com' : origin))).replace(/\/+$/,'')
+
+      // Bases específicas: FastAPI fixo em produção Vercel e padrão remoto também no dev
+      const envBaseRaw = ((process.env.REACT_APP_FASTAPI_BASE || process.env.REACT_APP_API_BASE) || '').trim()
+      const defaultFastApi = 'https://openalpr-fastapi-1.onrender.com'
+      const hasAbsoluteEnv = /^https?:\/\//i.test(envBaseRaw)
+      let fastApiBase = (hasAbsoluteEnv ? envBaseRaw : defaultFastApi).replace(/\/+$/,'')
+      // Permitir override via query string ?fastapi=https://... (útil para testes)
+      try {
+        const qs = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+        const qp = qs && qs.get('fastapi')
+        if (qp && /^https?:\/\//i.test(qp)) fastApiBase = qp.replace(/\/+$/,'')
+      } catch (_) {}
+      const apiOriginBase = (isDevCRA ? 'http://localhost:5000' : origin).replace(/\/+$/,'')
+      // Flag para desativar fallback e forçar FastAPI explicitamente: ?fastapionly=1
+      const fastApiOnly = (() => { try { const p = new URLSearchParams(window.location.search).get('fastapionly'); return p === '1' } catch (_) { return false } })()
+      const preferFastApiOnly = !!fastApiOnly
+      // Produção usa exclusivamente /api/* no mesmo domínio; FastAPI só se solicitado via fastapionly
+      const shouldTryFastApi = preferFastApiOnly
 
       const pickPlateFromData = (d) => {
         const first = Array.isArray(d?.plates) ? d.plates[0] : null
@@ -102,61 +119,112 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         return null
       }
 
+      const resolveFastApiEndpoint = () => {
+        try {
+          const u = new URL(fastApiBase)
+          const hasPath = !!(u.pathname && u.pathname !== '/' )
+          // Se o usuário forneceu um endpoint completo, usar como está.
+          if (hasPath) return u.toString()
+          // Caso contrário, usar /read-plate padrão.
+          u.pathname = '/read-plate'
+          u.search = '?region=br'
+          return u.toString()
+        } catch (_e) {
+          // Fallback básico
+          return `${fastApiBase}/read-plate?region=br`
+        }
+      }
+
       let best = null
-      // 1) FastAPI via /read-plate (multipart/form-data com campo "file")
-      {
+      const attempts = []
+      // 1) FastAPI (suporta tanto endpoint completo quanto /read-plate) — desativado por padrão no local
+      if (shouldTryFastApi) {
         const controller2 = new AbortController()
         const timeoutId2 = setTimeout(() => controller2.abort(), 12000)
-        const u2 = `${base}/read-plate?region=br`
+        const u2 = resolveFastApiEndpoint()
         try {
-          const fd2 = new FormData()
-          fd2.append('file', file)
-          const resp2 = await fetch(u2, { method: 'POST', body: fd2, signal: controller2.signal, mode: 'cors', credentials: 'omit' })
+          console.log('[alpr] tentando FastAPI:', u2)
+          const isBytes = /bytes|recognize-bytes|octet/i.test(u2)
+          let resp2
+          if (isBytes) {
+            resp2 = await fetch(u2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob, signal: controller2.signal, mode: 'cors', credentials: 'omit' })
+          } else {
+            const fd2 = new FormData()
+            fd2.append('file', file)
+            resp2 = await fetch(u2, { method: 'POST', body: fd2, signal: controller2.signal, mode: 'cors', credentials: 'omit' })
+          }
+          if (!resp2.ok) console.warn('[alpr] FastAPI falhou status', resp2.status)
           let j2 = null
           try { j2 = await resp2.json() } catch (_e) { j2 = null }
-          if (onRaw) onRaw({ step: 'read-plate', data: j2 })
+          attempts.push({ route: 'fastapi', ok: !!pickPlateFromData(j2), status: resp2.status, data: j2 })
+          if (onRaw) onRaw({ step: 'fastapi', data: j2 })
           best = pickPlateFromData(j2)
-        } catch (_e) {}
+          if (best) console.log('[alpr] sucesso via FastAPI', best)
+        } catch (eFast) {
+          const detail = String(eFast && eFast.message || eFast)
+          attempts.push({ route: 'fastapi', ok: false, error: detail })
+          console.warn('[alpr] erro FastAPI:', detail)
+          if (onRaw) onRaw({ error: 'fastapi_failed', detail })
+        }
         clearTimeout(timeoutId2)
       }
 
-      // 2) multipart para /api/recognize
-      if (!best) {
+      // 2) multipart para /api/recognize (mesmo domínio)
+      if (!best && !preferFastApiOnly) {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 12000)
-        const u1 = `${base}/api/recognize?region=br`
+        const u1 = `${apiOriginBase}/api/recognize?region=br`
         const fd = new FormData()
         fd.append('frame', file)
         try {
+          console.log('[alpr] tentando Node /api/recognize:', u1)
           const resp = await fetch(u1, { method: 'POST', body: fd, signal: controller.signal, mode: 'cors', credentials: 'omit' })
+          if (!resp.ok) console.warn('[alpr] recognize falhou status', resp.status)
           let j = null
           try { j = await resp.json() } catch (_e) { j = null }
+          attempts.push({ route: 'recognize', ok: !!pickPlateFromData(j), status: resp.status, data: j })
           if (onRaw) onRaw({ step: 'recognize', data: j })
           best = pickPlateFromData(j)
+          if (best) console.log('[alpr] sucesso via Node /api/recognize', best)
         } catch (e2) {
-          const info = { error: 'fetch_failed', detail: String(e2 && e2.message || e2) }
-          if (onRaw) onRaw(info)
-          if (onError) onError(info)
+          const detail = String(e2 && e2.message || e2)
+          attempts.push({ route: 'recognize', ok: false, error: detail })
+          console.warn('[alpr] erro recognize:', detail)
+          if (onRaw) onRaw({ error: 'recognize_failed', detail })
         }
         clearTimeout(timeoutId)
       }
 
-      // 3) bytes para /api/recognize-bytes
-      if (!best) {
+      // 3) bytes para /api/recognize-bytes (mesmo domínio)
+      if (!best && !preferFastApiOnly) {
         const controller3 = new AbortController()
         const timeoutId3 = setTimeout(() => controller3.abort(), 12000)
-        const u3 = `${base}/api/recognize-bytes?region=br`
+        const u3 = `${apiOriginBase}/api/recognize-bytes?region=br`
         try {
+          console.log('[alpr] tentando Node /api/recognize-bytes:', u3)
           const resp3 = await fetch(u3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob, signal: controller3.signal, mode: 'cors', credentials: 'omit' })
+          if (!resp3.ok) console.warn('[alpr] recognize-bytes falhou status', resp3.status)
           let j3 = null
           try { j3 = await resp3.json() } catch (_e) { j3 = null }
+          attempts.push({ route: 'recognize-bytes', ok: !!pickPlateFromData(j3), status: resp3.status, data: j3 })
           if (onRaw) onRaw({ step: 'recognize-bytes', data: j3 })
           best = pickPlateFromData(j3)
-        } catch (_e) {}
+          if (best) console.log('[alpr] sucesso via Node /api/recognize-bytes', best)
+        } catch (e3) {
+          const detail = String(e3 && e3.message || e3)
+          attempts.push({ route: 'recognize-bytes', ok: false, error: detail })
+          console.warn('[alpr] erro recognize-bytes:', detail)
+          if (onRaw) onRaw({ error: 'recognize_bytes_failed', detail })
+        }
         clearTimeout(timeoutId3)
       }
 
-      if (best && onRecognize) onRecognize([best])
+      if (best && onRecognize) {
+        onRecognize([best])
+      } else if (!best && onError) {
+        console.warn('[alpr] todas as rotas falharam', attempts)
+        onError({ error: 'fetch_failed', detail: 'all_routes_failed', attempts })
+      }
     } finally {
       setBusy(false)
     }

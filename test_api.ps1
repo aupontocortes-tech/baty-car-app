@@ -1,38 +1,121 @@
 param(
-  [string]$ApiBase = "https://openalpr-fastapi-1.onrender.com",
-  [string]$ImagePath = ""
+  [string]$BaseUrl = 'http://localhost:5000/api',
+  [string]$ImagePath = '',
+  [string]$ImageUrl = '',
+  [string]$Region = 'br'
 )
 
-Write-Host "Testando API..."
-try {
-  $response = Invoke-WebRequest -Uri "$ApiBase/" -UseBasicParsing -TimeoutSec 15
-  Write-Host "Resposta /:"
-  Write-Host $response.Content
-} catch {
-  Write-Host "Erro ao acessar /:"
-  Write-Host $_.Exception.Message
+function Write-Section($title) {
+  Write-Host "`n=== $title ===" -ForegroundColor Cyan
 }
 
-try {
-  $response = Invoke-WebRequest -Uri "$ApiBase/health" -UseBasicParsing -TimeoutSec 15
-  Write-Host "Resposta /health:"
-  Write-Host $response.Content
-} catch {
-  Write-Host "Erro ao acessar /health:"
-  Write-Host $_.Exception.Message
-}
-
-if ($ImagePath -and (Test-Path $ImagePath)) {
-  Write-Host "Testando read-plate com $ImagePath"
+function Test-Health($base) {
+  Write-Section "Health Check"
   try {
-    $resp = Invoke-RestMethod -Uri "$ApiBase/read-plate?region=br" -Method Post -ContentType 'application/octet-stream' -InFile $ImagePath -TimeoutSec 60
-    $json = $resp | ConvertTo-Json -Depth 6
-    Write-Host "Resposta read-plate:"
-    Write-Host $json
+    $h = Invoke-RestMethod -Uri "$base/health" -Method Get -TimeoutSec 10
+    $ok = $h.ok
+    Write-Host ("ok: {0} | uptime: {1}s" -f $ok, [math]::Round([double]$h.uptime,2)) -ForegroundColor Green
+    return $true
   } catch {
-    Write-Host "Erro ao acessar read-plate:"
-    Write-Host $_.Exception.Message
+    Write-Host "Health falhou: $($_.Exception.Message)" -ForegroundColor Red
+    return $false
   }
-} else {
-  if ($ImagePath) { Write-Host "Arquivo não encontrado: $ImagePath" }
 }
+
+function Invoke-RecognizeFile($base, $path, $region) {
+  Write-Section "Reconhecimento via multipart/form-data (/api/recognize)"
+  if (-not (Test-Path $path)) { Write-Host "Imagem não encontrada: $path" -ForegroundColor Yellow; return $null }
+  try {
+    $fileItem = Get-Item -LiteralPath $path
+    $u = "$base/recognize?region=$region"
+    $resp = Invoke-RestMethod -Uri $u -Method Post -Form @{ upload = $fileItem } -TimeoutSec 60
+    Write-Host "Status: sucesso (multipart)" -ForegroundColor Green
+    return $resp
+  } catch {
+    Write-Host "Falha (multipart): $($_.Exception.Message)" -ForegroundColor Red
+    return $null
+  }
+}
+
+function Invoke-RecognizeBytes($base, $path, $region) {
+  Write-Section "Reconhecimento via bytes (/api/recognize-bytes)"
+  if (-not (Test-Path $path)) { Write-Host "Imagem não encontrada: $path" -ForegroundColor Yellow; return $null }
+  try {
+    $u = "$base/recognize-bytes?region=$region"
+    $resp = Invoke-RestMethod -Uri $u -Method Post -ContentType 'application/octet-stream' -InFile $path -TimeoutSec 60
+    Write-Host "Status: sucesso (bytes)" -ForegroundColor Green
+    return $resp
+  } catch {
+    Write-Host "Falha (bytes): $($_.Exception.Message)" -ForegroundColor Red
+    return $null
+  }
+}
+
+function Invoke-RecognizeUrl($base, $url, $region) {
+  Write-Section "Reconhecimento por URL (baixa e envia)"
+  if ([string]::IsNullOrWhiteSpace($url)) { Write-Host "URL não fornecida" -ForegroundColor Yellow; return $null }
+  $tmp = New-TemporaryFile
+  try {
+    Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -TimeoutSec 30
+    $resp = Invoke-RecognizeFile $base $tmp $region
+    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+    return $resp
+  } catch {
+    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+    Write-Host "Falha ao baixar URL: $($_.Exception.Message)" -ForegroundColor Red
+    return $null
+  }
+}
+
+function Print-Result($label, $resp) {
+  Write-Section $label
+  if ($null -eq $resp) { Write-Host "Sem resposta" -ForegroundColor Yellow; return }
+  if ($resp.results -and $resp.results.Count -gt 0) {
+    $first = $resp.results[0]
+    Write-Host ("Placa: {0} | Confiança: {1}" -f $first.plate, [math]::Round([double]$first.confidence,2)) -ForegroundColor Green
+  } elseif ($resp.plates -and $resp.plates.Count -gt 0) {
+    $first = $resp.plates[0]
+    Write-Host ("Placa: {0} | Confiança: {1}" -f $first.plate, [math]::Round([double]$first.confidence,2)) -ForegroundColor Green
+  } else {
+    Write-Host "Nenhuma placa detectada" -ForegroundColor Yellow
+  }
+}
+
+$okHealth = Test-Health $BaseUrl
+
+$respFile = $null
+if (-not [string]::IsNullOrWhiteSpace($ImagePath)) {
+  $respFile = Invoke-RecognizeFile $BaseUrl $ImagePath $Region
+  Print-Result "Resultado (multipart)" $respFile
+
+  $respBytes = Invoke-RecognizeBytes $BaseUrl $ImagePath $Region
+  Print-Result "Resultado (bytes)" $respBytes
+}
+
+$respUrl = $null
+if (-not [string]::IsNullOrWhiteSpace($ImageUrl)) {
+  $respUrl = Invoke-RecognizeUrl $BaseUrl $ImageUrl $Region
+  Print-Result "Resultado (URL)" $respUrl
+}
+
+Write-Section "Resumo"
+if ($okHealth -and (
+    ($respFile -and ($respFile.results -or $respFile.plates)) -or 
+    ($respBytes -and ($respBytes.results -or $respBytes.plates)) -or 
+    ($respUrl -and ($respUrl.results -or $respUrl.plates))
+  )) {
+  Write-Host "Tudo OK: backend ativo e reconhecimento retornou resultados." -ForegroundColor Green
+} elseif ($okHealth) {
+  Write-Host "Backend OK, porém sem placas detectadas nas entradas fornecidas." -ForegroundColor Yellow
+  Write-Host "Sugestões: use imagem nítida, alta resolução e foco na placa." -ForegroundColor DarkYellow
+} else {
+  Write-Host "Backend indisponível. Verifique se o servidor está rodando e as variáveis de ambiente." -ForegroundColor Red
+}
+
+Write-Host "`nComo usar:" -ForegroundColor Cyan
+Write-Host "# Teste local com arquivo (multipart):" -ForegroundColor Cyan
+Write-Host (".\test_api.ps1 -BaseUrl 'http://localhost:5000/api' -ImagePath 'C:\\caminho\\para\\imagem.jpg' -Region 'br'") -ForegroundColor White
+Write-Host "# Teste local com bytes:" -ForegroundColor Cyan
+Write-Host (".\test_api.ps1 -BaseUrl 'http://localhost:5000/api' -ImagePath 'C:\\caminho\\para\\imagem.jpg' -Region 'br'") -ForegroundColor White
+Write-Host "# Teste com URL:" -ForegroundColor Cyan
+Write-Host (".\test_api.ps1 -BaseUrl 'http://localhost:5000/api' -ImageUrl 'https://exemplo.com/placa.jpg' -Region 'br'") -ForegroundColor White

@@ -25,66 +25,68 @@ module.exports = async (req, res) => {
       res.json({ error: 'read_failed' })
       return
     }
+
+    const key = (process.env.PLATERECOGNIZER_API_KEY || process.env.PLATEREGONIZE_API_KEY || '').trim()
+    const base = (process.env.PLATERECOGNIZER_BASE_URL || process.env.PLATEREGONIZE_BASE_URL || 'https://api.platerecognizer.com').replace(/\/+$/,'')
     const regionParam = String((req.query.region || process.env.ALPR_REGION || 'br')).toLowerCase()
-    const regionBase = regionParam === 'br' ? 'eu' : (['us', 'eu'].includes(regionParam) ? regionParam : 'eu')
-    const secret = process.env.OPENALPR_API_KEY || 'sk_DEMO'
-    try {
-      const preferred = regionBase
-      const regionsV2 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
-      const regionsV3 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
-      let out = null
-      let tried = []
-      for (const r of regionsV2) {
-        const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
-        tried.push(r + ':v3')
-        const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0', 'Origin': 'https://baty-car-app.vercel.app' }, body: buf })
-        if (respV3.ok) {
-          const maybe3 = await respV3.json()
-          const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
-          if (arr3.length > 0) { out = maybe3; break }
-        }
-        const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
-        tried.push(r + ':v2')
-        const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0', 'Origin': 'https://baty-car-app.vercel.app' }, body: buf })
-        if (respV2.ok) {
-          const maybe = await respV2.json()
-          const arr = Array.isArray(maybe.results) ? maybe.results : []
-          if (arr.length > 0) { out = maybe; break }
-        }
-      }
-      if (!out) {
-        for (const r of regionsV3) {
-          const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=20`
-          tried.push(r + ':v3')
-          const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0', 'Origin': 'https://baty-car-app.vercel.app' }, body: buf })
-          if (respV3.ok) {
-            const maybe3 = await respV3.json()
-            const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
-            if (arr3.length > 0) { out = maybe3; break }
-          }
-        }
-        if (!out) {
-          res.json({ error: 'no_plate', detail: 'Nenhuma placa encontrada', tried })
-          return
-        }
-      }
-      const regions = Array.isArray(out?.regions) ? out.regions : []
-      const alprFailed = !!(out && out.alpr_failed)
-      const results = Array.isArray(out?.results) ? out.results : []
-      const plates = results.map(r => ({
-        plate: r.plate,
-        confidence: typeof r.confidence === 'number' ? r.confidence : Number(r.confidence) || 0,
-        region: regionBase,
-        candidates: Array.isArray(r.candidates) ? r.candidates.map(c => ({ plate: c.plate, confidence: typeof c.confidence === 'number' ? c.confidence : Number(c.confidence) || 0 })) : []
-      }))
-      res.json({ plates, meta: { processing_time_ms: out?.processing_time_ms || null, regionTried: tried, regions, alprFailed } })
-    } catch (e) {
-      const msg = String((e && e.message) || e)
-      if (/is not defined/i.test(msg)) {
-        res.json({ error: 'no_plate', detail: 'Nenhuma placa encontrada' })
-      } else {
-        res.json({ error: 'alpr_failed', detail: msg })
-      }
+    const regions = regionParam === 'br' ? 'br' : (['us','eu'].includes(regionParam) ? regionParam : 'eu')
+
+    if (!key) {
+      res.status(500).json({ error: 'missing_api_key', detail: 'Defina PLATERECOGNIZER_API_KEY nas variáveis do projeto Vercel.' })
+      return
     }
+
+    let out = null
+    let tried = []
+
+    // 1) Usar recognize-bytes com o buffer lido
+    const urlBytes = `${base}/v1/recognize-bytes?regions=${encodeURIComponent(regions)}&topn=20`
+    tried.push('platerecognizer:recognize-bytes')
+    try {
+      const resp = await fetch(urlBytes, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Accept': 'application/json',
+          'Authorization': `Token ${key}`,
+          'User-Agent': 'BatyCarApp/1.0'
+        },
+        body: buf
+      })
+      if (resp.ok) out = await resp.json()
+    } catch (_) {}
+
+    // 2) Fallback: plate-reader multipart
+    if (!out || !Array.isArray(out.results) || out.results.length === 0) {
+      tried.push('platerecognizer:plate-reader')
+      const FormData = require('form-data')
+      const formUp = new FormData()
+      formUp.append('upload', buf, { filename: 'frame.jpg', contentType: 'application/octet-stream' })
+      const headers = Object.assign({}, formUp.getHeaders(), {
+        'Accept': 'application/json',
+        'Authorization': `Token ${key}`,
+        'User-Agent': 'BatyCarApp/1.0'
+      })
+      const urlReader = `${base}/v1/plate-reader/?regions=${encodeURIComponent(regions)}&topn=20`
+      try {
+        const resp2 = await fetch(urlReader, { method: 'POST', headers, body: formUp })
+        if (resp2.ok) out = await resp2.json()
+      } catch (_) {}
+    }
+
+    if (!out || !Array.isArray(out.results) || out.results.length === 0) {
+      res.json({ error: 'no_plate', detail: 'Nenhuma placa encontrada', tried })
+      return
+    }
+
+    const results = Array.isArray(out.results) ? out.results : []
+    const plates = results.map(r => {
+      const plate = String(r.plate || '').toUpperCase().replace(/[^A-Z0-9]/g,'')
+      const score = (typeof r.score === 'number') ? r.score : (r.confidence != null ? Number(r.confidence) : 0)
+      const confidence = score > 1 ? score : Math.round((score || 0) * 100)
+      return { plate, confidence }
+    })
+
+    res.json({ plates, meta: { provider: 'platerecognizer', tried } })
   })
 }

@@ -15,10 +15,7 @@ baty-car-app/
 .env
 .env.*
 
-# Uploads and generated images
-server/uploads/
-server/uploads/**
-server/uploads/recognized/
+# (removido: uploads locais não são mais usados pelo servidor)
 
 # OS files
 .DS_Store

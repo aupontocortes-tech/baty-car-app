@@ -2,9 +2,6 @@
   "buildCommand": "npm run build",
   "outputDirectory": "client/build",
   "framework": "create-react-app",
-  "env": {
-    "REACT_APP_API_BASE": "https://baty-car-app-1.onrender.com"
-  },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/sw.js", "destination": "/sw.js" },

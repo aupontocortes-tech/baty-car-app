@@ -1,707 +1,80 @@
+require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
 const multer = require('multer')
-const fs = require('fs')
 const path = require('path')
-const { exec } = require('child_process')
-const http = require('http')
-const https = require('https')
+const fs = require('fs')
 const fetch = require('node-fetch')
+const FormData = require('form-data')
 
 const app = express()
-// CORS: permitir Vercel e localhost, métodos e headers necessários
-const allowedOrigins = ['https://baty-car-app.vercel.app', 'http://localhost:3000']
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true)
-    const ok = allowedOrigins.includes(origin)
-    return callback(ok ? null : new Error('Not allowed by CORS'), ok)
-  },
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
-  credentials: false,
-  optionsSuccessStatus: 204
-}
+const allowedOrigins = ['https://baty-car-app.vercel.app','http://localhost:3000']
+const corsOptions = { origin: (origin, cb) => cb(null, !origin || allowedOrigins.includes(origin)), methods: ['GET','POST','OPTIONS'], allowedHeaders: ['Content-Type','Authorization','Accept','X-Requested-With'], credentials: false, optionsSuccessStatus: 204 }
 app.use(cors(corsOptions))
 app.options('*', cors(corsOptions))
-// headers explícitos para toda resposta (inclui pré-flight)
-app.use((req, res, next) => {
-  const origin = req.headers.origin
-  if (origin && allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin)
-  }
-  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With')
-  if (req.method === 'OPTIONS') return res.sendStatus(204)
-  next()
-})
-app.use(express.json({ limit: '10mb' }))
+app.use((req,res,next)=>{ const o=req.headers.origin; if(o&&allowedOrigins.includes(o)) res.header('Access-Control-Allow-Origin',o); res.header('Access-Control-Allow-Methods','GET,POST,OPTIONS'); res.header('Access-Control-Allow-Headers','Content-Type, Authorization, Accept, X-Requested-With'); if(req.method==='OPTIONS') return res.sendStatus(204); next() })
 
-const uploadsDir = path.join(__dirname, 'uploads')
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true })
+const rawBytes = express.raw({ type: 'application/octet-stream', limit: '10mb' })
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10*1024*1024 } })
+
+const KEY = (process.env.PLATERECOGNIZER_API_KEY || process.env.PLATEREGONIZE_API_KEY || '').trim()
+const BASE = (process.env.PLATERECOGNIZER_BASE_URL || process.env.PLATEREGONIZE_BASE_URL || 'https://api.platerecognizer.com').replace(/\/+$/,'')
+const UA = 'BatyCarApp/1.0'
+
+function normalize(out){ const results = Array.isArray(out?.results) ? out.results : []; return results.map(r=>{ const plate = String(r.plate||'').toUpperCase().replace(/[^A-Z0-9]/g,''); const s = typeof r.score==='number'?r.score:(r.confidence!=null?Number(r.confidence):0); const confidence = s>1?s:Math.round((s||0)*100); return { plate, confidence } }) }
+
+app.get('/api/health', (req,res)=>{ res.json({ ok:true, ts:Date.now(), uptime:process.uptime() }) })
+
+app.post('/api/recognize-bytes', rawBytes, async (req,res)=>{
+  try {
+    if(!KEY){ res.status(500).json({ error:'missing_api_key' }); return }
+    const buf = req.body
+    if(!buf || !Buffer.isBuffer(buf) || buf.length<16){ res.status(400).json({ error:'missing_bytes' }); return }
+    const region = String((req.query.region || process.env.ALPR_REGION || 'br')).toLowerCase()
+    const urlBytes = `${BASE}/v1/recognize-bytes?regions=${encodeURIComponent(region)}&topn=20`
+    let out=null, tried=['platerecognizer:recognize-bytes']
+    try{
+      const r = await fetch(urlBytes,{ method:'POST', headers:{ 'Content-Type':'application/octet-stream','Accept':'application/json','Authorization':`Token ${KEY}`,'User-Agent':UA }, body:buf })
+      if(r.ok) out = await r.json()
+    }catch(_){ }
+    if(!out || !Array.isArray(out.results) || out.results.length===0){
+      tried.push('platerecognizer:plate-reader')
+      const form = new FormData(); form.append('upload', buf, { filename:'frame.jpg', contentType:'application/octet-stream' })
+      const headers = { ...form.getHeaders(), 'Accept':'application/json','Authorization':`Token ${KEY}`,'User-Agent':UA }
+      const urlReader = `${BASE}/v1/plate-reader/?regions=${encodeURIComponent(region)}&topn=20`
+      try{ const r2 = await fetch(urlReader,{ method:'POST', headers, body:form }); if(r2.ok) out = await r2.json() }catch(_){ }
+    }
+    if(!out || !Array.isArray(out.results) || out.results.length===0){ res.json({ error:'no_plate', detail:'Nenhuma placa encontrada', tried }); return }
+    res.json({ plates: normalize(out), meta:{ provider:'platerecognizer', tried } })
+  }catch(e){ res.status(500).json({ error:'platerecognizer_failed', detail:String(e&&e.message||e) }) }
+})
+
+app.post('/api/recognize', upload.any(), async (req,res)=>{
+  try{
+    if(!KEY){ res.status(500).json({ error:'missing_api_key' }); return }
+    const file = (req.files||[]).find(f=>f.fieldname==='upload' || f.fieldname==='frame')
+    if(!file || !file.buffer){ res.status(400).json({ error:'missing_file' }); return }
+    const buf = file.buffer
+    const region = String((req.query.region || process.env.ALPR_REGION || 'br')).toLowerCase()
+    const form = new FormData(); form.append('upload', buf, { filename:file.originalname||'frame.jpg', contentType:file.mimetype||'application/octet-stream' })
+    const headers = { ...form.getHeaders(), 'Accept':'application/json','Authorization':`Token ${KEY}`,'User-Agent':UA }
+    const urlReader = `${BASE}/v1/plate-reader/?regions=${encodeURIComponent(region)}&topn=20`
+    let out=null; try{ const r = await fetch(urlReader,{ method:'POST', headers, body:form }); if(r.ok) out = await r.json() }catch(_){ }
+    if(!out || !Array.isArray(out.results) || out.results.length===0){
+      const urlBytes = `${BASE}/v1/recognize-bytes?regions=${encodeURIComponent(region)}&topn=20`
+      try{ const r2 = await fetch(urlBytes,{ method:'POST', headers:{ 'Content-Type':'application/octet-stream','Accept':'application/json','Authorization':`Token ${KEY}`,'User-Agent':UA }, body:buf }); if(r2.ok) out = await r2.json() }catch(_){ }
+    }
+    if(!out || !Array.isArray(out.results) || out.results.length===0){ res.json({ error:'no_plate', detail:'Nenhuma placa encontrada' }); return }
+    res.json({ plates: normalize(out), meta:{ provider:'platerecognizer' } })
+  }catch(e){ res.status(500).json({ error:'platerecognizer_failed', detail:String(e&&e.message||e) }) }
+})
+
+// Static client (prod build)
+const clientBuildDir = path.join(__dirname,'../client/build')
+if(fs.existsSync(clientBuildDir)){
+  app.use(express.static(clientBuildDir))
+  app.get('*',(req,res,next)=>{ if(req.path && req.path.startsWith('/api')) return next(); res.sendFile(path.join(clientBuildDir,'index.html')) })
 }
-const recognizedDir = path.join(uploadsDir, 'recognized')
-if (!fs.existsSync(recognizedDir)) {
-  fs.mkdirSync(recognizedDir, { recursive: true })
-}
-
-const storage = multer.diskStorage({
-  destination: function (_req, _file, cb) {
-    cb(null, uploadsDir)
-  },
-  filename: function (_req, file, cb) {
-    const ext = path.extname(file.originalname || '.jpg')
-    cb(null, `${Date.now()}${ext}`)
-  }
-})
-const upload = multer({ storage })
-
-const OPENLPR_URL = (process.env.OPENLPR_URL || '').replace(/\/+$/,'')
-const OPENLPR_DETECT_PATH = process.env.OPENLPR_DETECT_PATH || '/api/detect'
-const FASTAPI_BASE = (process.env.FASTAPI_BASE || process.env.OPENALPR_FASTAPI || 'https://openalpr-fastapi-1.onrender.com').replace(/\/+$/,'')
-
-const runAlpr = (filePath, region) => new Promise((resolve, reject) => {
-  const bin = process.env.ALPR_BIN || 'alpr'
-  const cmd = `${bin} --detect_region -n 3 -c ${region} -j "${filePath}"`
-  exec(cmd, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
-    if (error) {
-      reject({ error: 'alpr_failed', detail: String(stderr || error.message) })
-      return
-    }
-    let parsed
-    try {
-      parsed = JSON.parse(stdout)
-    } catch (_e) {
-      reject({ error: 'invalid_json', raw: stdout })
-      return
-    }
-    resolve(parsed)
-  })
-})
-
-async function runOpenLprBytes(buf) {
-  if (!OPENLPR_URL) return null
-  const url = OPENLPR_URL + OPENLPR_DETECT_PATH
-  const b64 = buf.toString('base64')
-  const j = await new Promise((resolve) => {
-    try {
-      const u = new URL(url)
-      const isHttps = u.protocol === 'https:'
-      const mod = isHttps ? https : http
-      const payload = JSON.stringify({ image: b64 })
-      const opts = {
-        method: 'POST',
-        hostname: u.hostname,
-        port: u.port || (isHttps ? 443 : 80),
-        path: u.pathname + (u.search || ''),
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
-      }
-      const req = mod.request(opts, (res) => {
-        let data = ''
-        res.on('data', (c) => { data += c })
-        res.on('end', () => {
-          if (res.statusCode && res.statusCode >= 400) {
-            resolve(null)
-            return
-          }
-          try { resolve(JSON.parse(data)) } catch (_e) { resolve(null) }
-        })
-      })
-      req.on('error', () => resolve(null))
-      req.write(payload)
-      req.end()
-    } catch (_e) {
-      resolve(null)
-    }
-  })
-  if (!j) return null
-  const first = Array.isArray(j.results) ? j.results[0] : null
-  const plate = (j.plate || (first && first.plate) || '')
-  const confidenceRaw = (j.confidence != null ? j.confidence : (first && first.confidence))
-  const confidence = typeof confidenceRaw === 'number' ? confidenceRaw : (Number(confidenceRaw) || 0)
-  if (plate) return { results: [{ plate, confidence }] }
-  if (Array.isArray(j.results) && j.results.length) return { results: j.results }
-  if (Array.isArray(j.plates) && j.plates.length) return { results: j.plates.map(p => ({ plate: p.plate, confidence: p.confidence })) }
-  return null
-}
-
-app.post('/api/recognize', upload.single('frame'), async (req, res) => {
-  if (!req.file) {
-    res.status(400).json({ error: 'missing_file' })
-    return
-  }
-  const filePath = req.file.path
-  const regionParam = (req.query.region || process.env.ALPR_REGION || 'br').toString().toLowerCase()
-  const regionBase = regionParam === 'br' ? 'eu' : (['us', 'eu'].includes(regionParam) ? regionParam : 'eu')
-  const order = [regionBase, 'us']
-  let parsed = null
-  let usedRegion = regionBase
-  let lastError = null
-  try {
-    const buf = await fs.promises.readFile(filePath)
-    const ol = await runOpenLprBytes(buf)
-    if (ol && Array.isArray(ol.results) && ol.results.length) {
-      parsed = { results: ol.results }
-    }
-  } catch (_e) {}
-  for (const r of order) {
-    try {
-      const out = await runAlpr(filePath, r)
-      const resArr = Array.isArray(out.results) ? out.results : []
-      parsed = out
-      usedRegion = r
-      if (resArr.length > 0 || parsed) break
-    } catch (e) {
-      lastError = e
-    }
-  }
-  if (!parsed) {
-    try {
-      const buf = await fs.promises.readFile(filePath)
-      const secret = process.env.OPENALPR_API_KEY || 'sk_DEMO'
-      const preferred = regionBase
-      const regionsV2 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
-      const regionsV3 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
-      let out = null
-      for (const r of regionsV2) {
-        const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
-        const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-        if (respV3.ok) {
-          const maybe3 = await respV3.json()
-          const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
-          if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
-        }
-        const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
-        const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-        if (respV2.ok) {
-          const maybe = await respV2.json()
-          const arr = Array.isArray(maybe.results) ? maybe.results : []
-          if (arr.length > 0) { out = maybe; usedRegion = r; break }
-        }
-      }
-      if (!out) {
-        for (const r of regionsV3) {
-          const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=20`
-          const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-          if (respV3.ok) {
-            const maybe3 = await respV3.json()
-            const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
-            if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
-          }
-        }
-      }
-      parsed = out || { results: [] }
-    } catch (_e) {
-      parsed = { results: [] }
-    }
-  }
-  const results = Array.isArray(parsed.results) ? parsed.results : []
-  const plates = results.map(r => ({
-    plate: r.plate,
-    confidence: typeof r.confidence === 'number' ? r.confidence : Number(r.confidence) || 0,
-    region: usedRegion,
-    candidates: Array.isArray(r.candidates)
-      ? r.candidates.map(c => ({
-          plate: c.plate,
-          confidence: typeof c.confidence === 'number' ? c.confidence : Number(c.confidence) || 0
-        }))
-      : []
-  }))
-  res.json({ plates, imageFile: null, meta: { processing_time_ms: parsed.processing_time_ms || null, regionTried: order } })
-})
-
-app.post('/api/recognize-bytes', async (req, res) => {
-  try {
-    const chunks = []
-    await new Promise((resolve, reject) => {
-      req.on('data', (c) => chunks.push(c))
-      req.on('end', resolve)
-      req.on('error', reject)
-    })
-    const buf = Buffer.concat(chunks)
-    if (!buf || buf.length === 0) {
-      res.status(400).json({ error: 'missing_bytes' })
-      return
-    }
-    const ol = await runOpenLprBytes(buf)
-    if (ol && Array.isArray(ol.results) && ol.results.length) {
-      const results = ol.results
-      const plates = results.map(r => ({
-        plate: r.plate,
-        confidence: typeof r.confidence === 'number' ? r.confidence : Number(r.confidence) || 0,
-        region: (process.env.ALPR_REGION || 'br'),
-        candidates: []
-      }))
-      res.json({ plates, meta: { engine: 'openlpr' } })
-      return
-    }
-    const tmpName = `${Date.now()}_frombytes.jpg`
-    const tmpPath = path.join(uploadsDir, tmpName)
-    await fs.promises.writeFile(tmpPath, buf)
-    const regionParam = (req.query.region || process.env.ALPR_REGION || 'br').toString().toLowerCase()
-    const regionBase = regionParam === 'br' ? 'eu' : (['us', 'eu'].includes(regionParam) ? regionParam : 'eu')
-    const order = [regionBase, 'us']
-    let parsed = null
-    let usedRegion = regionBase
-    let lastError = null
-    for (const r of order) {
-      try {
-        const out = await runAlpr(tmpPath, r)
-        const resArr = Array.isArray(out.results) ? out.results : []
-        parsed = out
-        usedRegion = r
-        if (resArr.length > 0) break
-      } catch (e) {
-        lastError = e
-      }
-    }
-    if (!parsed) {
-      try {
-        const secret = process.env.OPENALPR_API_KEY || 'sk_DEMO'
-        const preferred = regionBase
-        const regionsV2 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
-        const regionsV3 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
-        let out = null
-        for (const r of regionsV2) {
-          const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
-          const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-          if (respV3.ok) {
-            const maybe3 = await respV3.json()
-            const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
-            if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
-          }
-          const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
-          const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-          if (respV2.ok) {
-            const maybe = await respV2.json()
-            const arr = Array.isArray(maybe.results) ? maybe.results : []
-            if (arr.length > 0) { out = maybe; usedRegion = r; break }
-          }
-        }
-        if (!out) {
-          for (const r of regionsV3) {
-            const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=20`
-            const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-            if (respV3.ok) {
-              const maybe3 = await respV3.json()
-              const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
-              if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
-            }
-          }
-        }
-        parsed = out || { results: [] }
-      } catch (_e) {
-        parsed = { results: [] }
-      }
-    }
-    const results = Array.isArray(parsed.results) ? parsed.results : []
-    const plates = results.map(r => ({
-      plate: r.plate,
-      confidence: typeof r.confidence === 'number' ? r.confidence : Number(r.confidence) || 0,
-      region: usedRegion,
-      candidates: Array.isArray(r.candidates)
-        ? r.candidates.map(c => ({ plate: c.plate, confidence: typeof c.confidence === 'number' ? c.confidence : Number(c.confidence) || 0 }))
-        : []
-    }))
-    res.json({ plates, meta: { processing_time_ms: parsed.processing_time_ms || null, regionTried: order } })
-  } catch (e) {
-    res.status(500).json({ error: 'alpr_failed', detail: String(e && e.message || e) })
-  }
-})
-
-app.post('/api/read-plate', async (req, res) => {
-  try {
-    let buf = null
-    const ct = String(req.headers['content-type'] || '').toLowerCase()
-    if (/application\/json/.test(ct)) {
-      const raw = String((req.body && req.body.image) || '')
-      const clean = raw.replace(/^data:[^;]+;base64,/, '')
-      if (!clean || clean.length < 32) {
-        res.status(400).json({ error: 'missing_image' })
-        return
-      }
-      buf = Buffer.from(clean, 'base64')
-    } else {
-      const chunks = []
-      await new Promise((resolve, reject) => {
-        req.on('data', (c) => chunks.push(c))
-        req.on('end', resolve)
-        req.on('error', reject)
-      })
-      buf = Buffer.concat(chunks)
-      if (!buf || buf.length === 0) {
-        res.status(400).json({ error: 'missing_bytes' })
-        return
-      }
-    }
-    const ol = await runOpenLprBytes(buf)
-    if (ol && Array.isArray(ol.results) && ol.results.length) {
-      const results = ol.results
-      const plates = results.map(r => ({
-        plate: r.plate,
-        confidence: typeof r.confidence === 'number' ? r.confidence : Number(r.confidence) || 0,
-        region: (process.env.ALPR_REGION || 'br'),
-        candidates: []
-      }))
-      res.json({ plates, meta: { engine: 'openlpr' } })
-      return
-    }
-    const tmpName = `${Date.now()}_readplate.jpg`
-    const tmpPath = path.join(uploadsDir, tmpName)
-    await fs.promises.writeFile(tmpPath, buf)
-    const regionParam = (req.query.region || process.env.ALPR_REGION || 'br').toString().toLowerCase()
-    const regionBase = regionParam === 'br' ? 'eu' : (['us', 'eu'].includes(regionParam) ? regionParam : 'eu')
-    const order = [regionBase, 'us']
-    let parsed = null
-    let usedRegion = regionBase
-    let lastError = null
-    for (const r of order) {
-      try {
-        const out = await runAlpr(tmpPath, r)
-        const resArr = Array.isArray(out.results) ? out.results : []
-        parsed = out
-        usedRegion = r
-        if (resArr.length > 0) break
-      } catch (e) {
-        lastError = e
-      }
-    }
-    if (!parsed) {
-      try {
-        const secret = process.env.OPENALPR_API_KEY || 'sk_DEMO'
-        const preferred = regionBase
-        const regionsV2 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
-        const regionsV3 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
-        let out = null
-        for (const r of regionsV2) {
-          const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
-          const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-          if (respV3.ok) {
-            const maybe3 = await respV3.json()
-            const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
-            if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
-          }
-          const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
-          const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-          if (respV2.ok) {
-            const maybe = await respV2.json()
-            const arr = Array.isArray(maybe.results) ? maybe.results : []
-            if (arr.length > 0) { out = maybe; usedRegion = r; break }
-          }
-        }
-        if (!out) {
-          for (const r of regionsV3) {
-            const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=20`
-            const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-            if (respV3.ok) {
-              const maybe3 = await respV3.json()
-              const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
-              if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
-            }
-          }
-        }
-        parsed = out || { results: [] }
-      } catch (_e) {
-        parsed = { results: [] }
-      }
-    }
-    const results = Array.isArray(parsed.results) ? parsed.results : []
-    const plates = results.map(r => ({
-      plate: r.plate,
-      confidence: typeof r.confidence === 'number' ? r.confidence : Number(r.confidence) || 0,
-      region: usedRegion,
-      candidates: Array.isArray(r.candidates)
-        ? r.candidates.map(c => ({ plate: c.plate, confidence: typeof c.confidence === 'number' ? c.confidence : Number(c.confidence) || 0 }))
-        : []
-    }))
-    res.json({ plates, meta: { processing_time_ms: parsed.processing_time_ms || null, regionTried: order } })
-  } catch (e) {
-    res.status(500).json({ error: 'alpr_failed', detail: String(e && e.message || e) })
-  }
-})
-
-app.post('/read-plate', async (req, res) => {
-  try {
-    const base = FASTAPI_BASE
-    if (!/^https?:\/\//i.test(base)) {
-      res.status(500).json({ error: 'proxy_not_configured' })
-      return
-    }
-    const ct = String(req.headers['content-type'] || '').toLowerCase()
-    const region = (req.query.region || process.env.ALPR_REGION || 'br').toString().toLowerCase()
-    const chunks = []
-    await new Promise((resolve, reject) => {
-      req.on('data', (c) => chunks.push(c))
-      req.on('end', resolve)
-      req.on('error', reject)
-    })
-    const buf = Buffer.concat(chunks)
-    const urlStr = `${base}/read-plate?region=${encodeURIComponent(region)}`
-    const u = new URL(urlStr)
-    const isHttps = u.protocol === 'https:'
-    const mod = isHttps ? https : http
-    const opts = {
-      method: 'POST',
-      hostname: u.hostname,
-      port: u.port || (isHttps ? 443 : 80),
-      path: u.pathname + (u.search || ''),
-      headers: { 'Content-Type': ct || 'application/octet-stream', 'Content-Length': buf.length }
-    }
-    await new Promise((resolve) => {
-      try {
-        const req2 = mod.request(opts, (resp) => {
-          let data = ''
-          resp.on('data', (c) => { data += c })
-          resp.on('end', () => {
-            let j
-            try { j = JSON.parse(data) } catch (_e) { j = null }
-            if (resp.statusCode && resp.statusCode >= 400) {
-              res.status(resp.statusCode).send(j || data)
-              resolve()
-              return
-            }
-            if (j && j.plate) {
-              const conf = typeof j.confidence === 'number' ? j.confidence : (Number(j.confidence) || 0)
-              const out = { results: [{ plate: j.plate, confidence: conf }], raw: j.raw }
-              res.json(out)
-              resolve()
-              return
-            }
-            res.send(j || data)
-            resolve()
-          })
-        })
-        req2.on('error', (e) => { res.status(500).json({ error: 'proxy_failed', detail: String(e && e.message || e) }); resolve() })
-        req2.write(buf)
-        req2.end()
-      } catch (e) {
-        res.status(500).json({ error: 'proxy_failed', detail: String(e && e.message || e) })
-        resolve()
-      }
-    })
-  } catch (e) {
-    res.status(500).json({ error: 'proxy_failed', detail: String(e && e.message || e) })
-  }
-})
-
-app.get('/api/fastapi-health', async (_req, res) => {
-  try {
-    const base = FASTAPI_BASE
-    if (!/^https?:\/\//i.test(base)) {
-      res.status(500).json({ ok: false, error: 'proxy_not_configured' })
-      return
-    }
-    const u = new URL(base + '/health')
-    const isHttps = u.protocol === 'https:'
-    const mod = isHttps ? https : http
-    const opts = {
-      method: 'GET',
-      hostname: u.hostname,
-      port: u.port || (isHttps ? 443 : 80),
-      path: u.pathname + (u.search || '')
-    }
-    const result = await new Promise((resolve) => {
-      try {
-        const req2 = mod.request(opts, (resp) => {
-          let data = ''
-          resp.on('data', (c) => { data += c })
-          resp.on('end', () => {
-            let j
-            try { j = JSON.parse(data) } catch (_e) { j = null }
-            resolve({ statusCode: resp.statusCode || 200, body: j || data })
-          })
-        })
-        req2.on('error', () => resolve({ statusCode: 500, body: { ok: false, error: 'proxy_failed' } }))
-        req2.end()
-      } catch (_e) {
-        resolve({ statusCode: 500, body: { ok: false, error: 'proxy_failed' } })
-      }
-    })
-    if (result.statusCode >= 400) {
-      res.status(result.statusCode).send(result.body)
-      return
-    }
-    res.send(result.body)
-  } catch (e) {
-    res.status(500).json({ ok: false, error: 'proxy_failed', detail: String(e && e.message || e) })
-  }
-})
-
-const downloadToFile = (fileUrl, destPath) => new Promise((resolve, reject) => {
-  try {
-    const timeoutMs = Number(process.env.DOWNLOAD_TIMEOUT_MS || 10000)
-    const mod = fileUrl.startsWith('https') ? https : http
-    const req = mod.get(fileUrl, (resp) => {
-      if (resp.statusCode && resp.statusCode >= 400) {
-        reject(new Error(`status_${resp.statusCode}`))
-        return
-      }
-      const ws = fs.createWriteStream(destPath)
-      resp.pipe(ws)
-      ws.on('finish', () => ws.close(() => resolve(destPath)))
-      ws.on('error', (e) => reject(e))
-      resp.on('error', (e) => reject(e))
-      resp.setTimeout(timeoutMs, () => {
-        try { resp.destroy(new Error('download_timeout')) } catch (_) {}
-      })
-    })
-    req.on('error', (e) => reject(e))
-    req.setTimeout(timeoutMs, () => {
-      try { req.destroy(new Error('download_timeout')) } catch (_) {}
-    })
-  } catch (e) {
-    reject(e)
-  }
-})
-
-app.get('/api/recognize-url', async (req, res) => {
-  const url = (req.query.url || '').toString()
-  const regionParam = (req.query.region || process.env.ALPR_REGION || 'br').toString().toLowerCase()
-  const regionBase = regionParam === 'br' ? 'eu' : (['us', 'eu'].includes(regionParam) ? regionParam : 'eu')
-  if (!url || !/^https?:\/\//i.test(url)) {
-    res.status(400).json({ error: 'invalid_url' })
-    return
-  }
-  const tmpName = `${Date.now()}_remote.jpg`
-  const tmpPath = path.join(uploadsDir, tmpName)
-  try {
-    await downloadToFile(url, tmpPath)
-  } catch (e) {
-    try {
-      const secret = process.env.OPENALPR_API_KEY || 'sk_DEMO'
-      const preferred = regionBase
-      const regions = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
-      let out = null
-      for (const r of regions) {
-        const urlV3 = `https://api.openalpr.com/v3/recognize_url?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50&url=${encodeURIComponent(url)}`
-        const respV3 = await fetch(urlV3, { headers: { 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' } })
-        if (respV3.ok) {
-          const maybe3 = await respV3.json()
-          const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
-          if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
-        }
-        const urlV2 = `https://api.openalpr.com/v2/recognize_url?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50&url=${encodeURIComponent(url)}`
-        const respV2 = await fetch(urlV2, { headers: { 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' } })
-        if (respV2.ok) {
-          const maybe = await respV2.json()
-          const arr = Array.isArray(maybe.results) ? maybe.results : []
-          if (arr.length > 0) { out = maybe; usedRegion = r; break }
-        }
-      }
-      const results = Array.isArray(out && out.results) ? out.results : []
-      const plates = results.map(r => ({
-        plate: r.plate,
-        confidence: typeof r.confidence === 'number' ? r.confidence : Number(r.confidence) || 0,
-        region: usedRegion,
-        candidates: Array.isArray(r.candidates)
-          ? r.candidates.map(c => ({ plate: c.plate, confidence: typeof c.confidence === 'number' ? c.confidence : Number(c.confidence) || 0 }))
-          : []
-      }))
-      res.json({ plates, meta: { processing_time_ms: out && out.processing_time_ms || null, regionTried: regions } })
-      return
-    } catch (_e) {
-      res.json({ plates: [], meta: { processing_time_ms: null, regionTried: [regionBase, 'us'] }, error: 'download_failed' })
-      return
-    }
-  }
-  const order = [regionBase, 'us']
-  let parsed = null
-  let usedRegion = regionBase
-  let lastError = null
-  for (const r of order) {
-    try {
-      const out = await runAlpr(tmpPath, r)
-      const resArr = Array.isArray(out.results) ? out.results : []
-      parsed = out
-      usedRegion = r
-      if (resArr.length > 0) break
-    } catch (e) {
-      lastError = e
-    }
-  }
-  if (!parsed) {
-    try {
-      const buf = await fs.promises.readFile(tmpPath)
-      const secret = process.env.OPENALPR_API_KEY || 'sk_DEMO'
-      const preferred = regionBase
-      const regionsV2 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
-      const regionsV3 = ['br', preferred, preferred === 'eu' ? 'us' : 'eu']
-      let out = null
-      for (const r of regionsV2) {
-        const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
-        const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-        if (respV3.ok) {
-          const maybe3 = await respV3.json()
-          const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
-          if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
-        }
-        const urlV2 = `https://api.openalpr.com/v2/recognize_bytes?secret_key=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=50`
-        const respV2 = await fetch(urlV2, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-        if (respV2.ok) {
-          const maybe = await respV2.json()
-          const arr = Array.isArray(maybe.results) ? maybe.results : []
-          if (arr.length > 0) { out = maybe; usedRegion = r; break }
-        }
-      }
-      if (!out) {
-        for (const r of regionsV3) {
-          const urlV3 = `https://api.openalpr.com/v3/recognize_bytes?secret=${encodeURIComponent(secret)}&recognize_vehicle=0&country=${encodeURIComponent(r)}&return_image=0&topn=20`
-          const respV3 = await fetch(urlV3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'Accept': 'application/json', 'User-Agent': 'BatyCarApp/1.0' }, body: buf })
-          if (respV3.ok) {
-            const maybe3 = await respV3.json()
-            const arr3 = Array.isArray(maybe3.results) ? maybe3.results : []
-            if (arr3.length > 0) { out = maybe3; usedRegion = r; break }
-          }
-        }
-      }
-      parsed = out || { results: [] }
-    } catch (_e) {
-      parsed = { results: [] }
-    }
-  }
-  const results = Array.isArray(parsed.results) ? parsed.results : []
-  const plates = results.map(r => ({
-    plate: r.plate,
-    confidence: typeof r.confidence === 'number' ? r.confidence : Number(r.confidence) || 0,
-    region: usedRegion,
-    candidates: Array.isArray(r.candidates)
-      ? r.candidates.map(c => ({
-          plate: c.plate,
-          confidence: typeof c.confidence === 'number' ? c.confidence : Number(c.confidence) || 0
-        }))
-      : []
-  }))
-  res.json({ plates, meta: { processing_time_ms: parsed.processing_time_ms || null, regionTried: order } })
-})
 
 const PORT = process.env.PORT || 5000
-app.listen(PORT, () => {
-  console.log(`server: http://localhost:${PORT}`)
-})
-app.get('/api/health', async (req, res) => {
-  try {
-    res.json({ ok: true, ts: Date.now(), uptime: process.uptime() })
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) })
-  }
-})
-
-app.get('/api/fetch-test', async (req, res) => {
-  try {
-    const r = await fetch('https://httpbin.org/get', { headers: { 'User-Agent': 'BatyCarApp/1.0' } })
-    const txt = await r.text()
-    res.json({ ok: r.ok, status: r.status, length: txt.length })
-  } catch (e) {
-    res.status(500).json({ error: 'fetch_failed', detail: String(e && e.message || e) })
-  }
-})
-
-const clientBuildDir = path.join(__dirname, '../client/build')
-if (fs.existsSync(clientBuildDir)) {
-  app.use(express.static(clientBuildDir))
-  app.get('*', (req, res, next) => {
-    if (req.path && req.path.startsWith('/api')) return next()
-    res.sendFile(path.join(clientBuildDir, 'index.html'))
-  })
-}
+app.listen(PORT, ()=>{ console.log(`server: http://localhost:${PORT}`) })
