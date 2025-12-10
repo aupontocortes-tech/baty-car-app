@@ -57,6 +57,8 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         try { vid.pause() } catch (_) {}
         try { vid.srcObject = null } catch (_) {}
       }
+      // Garantir que a lanterna desligue ao parar
+      try { if (track && track.applyConstraints) track.applyConstraints({ advanced: [{ torch: false }] }) } catch (_) {}
       setTorchOn(false)
     } catch (_) {}
   }
@@ -69,22 +71,66 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
   const toggleTorch = async () => {
     const t = trackRef.current
     try {
-      const caps = t && t.getCapabilities && t.getCapabilities()
-      if (!caps || !caps.torch) return
-      const next = !torchOn
-      setTorchOn(next)
-      await t.applyConstraints({ advanced: [{ torch: next }] }).catch(() => {})
+      const desired = !torchOn
+      // 1) Tentar applyConstraints com/sem checagem de capabilities
+      try {
+        const caps = t && t.getCapabilities && t.getCapabilities()
+        if (!caps || typeof caps.torch === 'undefined') {
+          await t.applyConstraints({ advanced: [{ torch: desired }] })
+        } else if (caps.torch) {
+          await t.applyConstraints({ advanced: [{ torch: desired }] })
+        }
+      } catch (_) {}
+      // 2) Verificar via getSettings
+      try {
+        const settings = t && t.getSettings && t.getSettings()
+        if (settings && typeof settings.torch !== 'undefined') {
+          setTorchOn(!!settings.torch)
+          return
+        }
+      } catch (_) {}
+      // 3) Fallback: tentar ImageCapture.setOptions
+      try {
+        // Alguns dispositivos expõem torch via ImageCapture
+        if (window.ImageCapture && t) {
+          const ic = new ImageCapture(t)
+          try {
+            const pc = ic.getPhotoCapabilities && await ic.getPhotoCapabilities()
+            if (pc && pc.torch) {
+              await (ic.setOptions ? ic.setOptions({ torch: desired }) : Promise.resolve())
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
+      // 4) Último recurso: confiar no estado desejado
+      setTorchOn(desired)
     } catch (_e) {}
   }
 
   const ensureTorchOn = async () => {
     const t = trackRef.current
     try {
-      const caps = t && t.getCapabilities && t.getCapabilities()
-      if (!caps || !caps.torch) return false
-      if (torchOn) return true
+      const desired = true
+      try { await t.applyConstraints({ advanced: [{ torch: desired }] }) } catch (_) {}
+      try {
+        const settings = t && t.getSettings && t.getSettings()
+        if (settings && typeof settings.torch !== 'undefined') {
+          setTorchOn(!!settings.torch)
+          return !!settings.torch
+        }
+      } catch (_) {}
+      try {
+        if (window.ImageCapture && t) {
+          const ic = new ImageCapture(t)
+          const pc = ic.getPhotoCapabilities && await ic.getPhotoCapabilities()
+          if (pc && pc.torch) {
+            await (ic.setOptions ? ic.setOptions({ torch: desired }) : Promise.resolve())
+            setTorchOn(true)
+            return true
+          }
+        }
+      } catch (_) {}
       setTorchOn(true)
-      await t.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {})
       return true
     } catch (_e) { return false }
   }
