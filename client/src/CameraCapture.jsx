@@ -21,13 +21,14 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
     try {
       setActive(true)
       setStatus('aguardando')
-      const constraints = { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }
+      // Simplificar constraints para evitar OverconstrainedError em dispositivos que não suportam width/height
+      const constraints = { video: { facingMode: 'environment' }, audio: false }
       let stream
       try {
         stream = await navigator.mediaDevices.getUserMedia(constraints)
       } catch (_e) {
-        // fallback se dispositivo não suportar resolução ideal
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+        // Fallback ainda mais permissivo
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
       }
       videoRef.current.srcObject = stream
       trackRef.current = stream.getVideoTracks && stream.getVideoTracks()[0]
@@ -241,8 +242,8 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       // Flag para desativar fallback e forçar FastAPI explicitamente: ?fastapionly=1
       const fastApiOnly = (() => { try { const p = new URLSearchParams(window.location.search).get('fastapionly'); return p === '1' } catch (_) { return false } })()
       const preferFastApiOnly = !!fastApiOnly
-      // Em produção, tentar FastAPI como fallback (primeiro); no dev, só se fastapionly=1
-      const shouldTryFastApi = preferFastApiOnly || (!isDevCRA)
+      // Habilitar FastAPI também no dev como fallback para evitar conexão recusada quando backend local não estiver ativo
+      const shouldTryFastApi = true
 
       const pickPlateFromData = (d) => {
         const first = Array.isArray(d?.plates) ? d.plates[0] : null
