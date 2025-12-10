@@ -14,17 +14,9 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
   const [sendFullFrame, setSendFullFrame] = useState(true)
   const isAndroid = /Android/i.test(navigator.userAgent)
   const frameRef = useRef(null)
-
-  // Ajuste: manter quadro inteiro por padrão também na Vercel (pode melhorar leitura)
-  useEffect(() => {
-    try {
-      const origin = typeof window !== 'undefined' ? window.location.origin : ''
-      const host = (() => { try { return new URL(origin).host } catch (_e) { return origin } })()
-      const isVercel = /vercel\.app$/i.test(String(host))
-      if (isVercel) setSendFullFrame(true)
-    } catch (_) {}
-  }, [])
-
+  // Add fast mode state and behavior
+  const [fastMode, setFastMode] = useState(isAndroid)
+  useEffect(() => { if (fastMode) setSendFullFrame(false) }, [fastMode])
   const start = async () => {
     try {
       setActive(true)
@@ -104,7 +96,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const video = videoRef.current
       const w = video.videoWidth || 640
       const h = video.videoHeight || 480
-      const targetW = Math.min(isAndroid ? 1024 : 1280, w)
+      const targetW = Math.min(isAndroid ? (fastMode ? 864 : 1024) : (fastMode ? 960 : 1280), w)
       const targetH = Math.round(targetW * (h / w))
       const srcCanvas = document.createElement('canvas')
       srcCanvas.width = targetW
@@ -168,7 +160,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         cctx.drawImage(srcCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH)
         frameCanvas = cropCanvas
       }
-      const jpegQuality = isAndroid ? 0.88 : 0.96
+      const jpegQuality = fastMode ? (isAndroid ? 0.84 : 0.88) : (isAndroid ? 0.88 : 0.96)
       let blob = await new Promise(resolve => frameCanvas.toBlob(resolve, 'image/jpeg', jpegQuality))
       if (!blob) {
         const dataUrl = frameCanvas.toDataURL('image/jpeg', 0.9)
@@ -296,6 +288,30 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       }
 
       // 2) multipart para /api/recognize (mesmo domínio ou override)
+      if (!best && !preferFastApiOnly && fastMode) {
+        const controllerBytesFast = new AbortController()
+        const timeoutIdBytesFast = setTimeout(() => controllerBytesFast.abort(), timeoutMs)
+        const uBytesFast = `${apiOriginBase}/api/recognize-bytes?region=${encodeURIComponent(regionParam)}`
+        try {
+          console.log('[alpr] fast-mode: Node /api/recognize-bytes primeiro:', uBytesFast)
+          const respBF = await fetch(uBytesFast, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob, signal: controllerBytesFast.signal, mode: 'cors', credentials: 'omit' })
+          if (!respBF.ok) console.warn('[alpr] fast-mode recognize-bytes falhou status', respBF.status)
+          let jBF = null
+          try { jBF = await respBF.json() } catch (_e) { jBF = null }
+          attempts.push({ route: 'recognize-bytes-fast', ok: !!pickPlateFromData(jBF), status: respBF.status, data: jBF })
+          if (onRaw) onRaw({ step: 'recognize-bytes-fast', data: jBF })
+          best = pickPlateFromData(jBF)
+          if (best) console.log('[alpr] sucesso via Node recognize-bytes (fast)', best)
+        } catch (eBF) {
+          const detail = String(eBF && eBF.message || eBF)
+          attempts.push({ route: 'recognize-bytes-fast', ok: false, error: detail })
+          console.warn('[alpr] erro recognize-bytes (fast):', detail)
+          if (onRaw) onRaw({ error: 'recognize_bytes_fast_failed', detail })
+        }
+        clearTimeout(timeoutIdBytesFast)
+      }
+
+      // 2) multipart para /api/recognize (mesmo domínio ou override)
       if (!best && !preferFastApiOnly) {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
@@ -322,7 +338,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       }
 
       // 3) bytes para /api/recognize-bytes (mesmo domínio ou override)
-      if (!best && !preferFastApiOnly) {
+      if (!best && !preferFastApiOnly && !fastMode) {
         const controller3 = new AbortController()
         const timeoutId3 = setTimeout(() => controller3.abort(), timeoutMs)
         const u3 = `${apiOriginBase}/api/recognize-bytes?region=${encodeURIComponent(regionParam)}`
@@ -364,10 +380,10 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
 
   useEffect(() => {
     if (!active || busy || !ready) return
-    const t = setTimeout(() => capture(), 800)
+    const t = setTimeout(() => capture(), (fastMode ? 400 : 800))
     timerRef.current = t
     return () => clearTimeout(t)
-  }, [active, busy, ready, procToggle, sendFullFrame])
+  }, [active, busy, ready, procToggle, sendFullFrame, fastMode])
 
   useEffect(() => {
     return () => {
@@ -387,6 +403,10 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       <div className="actions-center" style={{ gap: 8, marginBottom: 8 }}>
         <button className="button" onClick={active ? stop : start}>{active ? 'Parar Leitura' : 'Ler Placas'}</button>
         <button className="button" onClick={toggleTorch} disabled={!ready}>Lanterna {torchOn ? 'On' : 'Off'}</button>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={fastMode} onChange={e => setFastMode(e.target.checked)} />
+          Modo rápido
+        </label>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <input type="checkbox" checked={sendFullFrame} onChange={e => setSendFullFrame(e.target.checked)} />
           Enviar quadro inteiro
