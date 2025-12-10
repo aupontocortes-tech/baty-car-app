@@ -1,13 +1,11 @@
 param(
-  [string]$BaseUrl = 'http://localhost:5000/api',
+  [string]$BaseUrl = 'http://localhost:5001/api',
   [string]$ImagePath = '',
   [string]$ImageUrl = '',
   [string]$Region = 'br'
 )
 
-function Write-Section($title) {
-  Write-Host "`n=== $title ===" -ForegroundColor Cyan
-}
+function Write-Section($title) { Write-Host "`n=== $title ===" -ForegroundColor Cyan }
 
 function Test-Health($base) {
   Write-Section "Health Check"
@@ -19,21 +17,6 @@ function Test-Health($base) {
   } catch {
     Write-Host "Health falhou: $($_.Exception.Message)" -ForegroundColor Red
     return $false
-  }
-}
-
-function Invoke-RecognizeFile($base, $path, $region) {
-  Write-Section "Reconhecimento via multipart/form-data (/api/recognize)"
-  if (-not (Test-Path $path)) { Write-Host "Imagem não encontrada: $path" -ForegroundColor Yellow; return $null }
-  try {
-    $fileItem = Get-Item -LiteralPath $path
-    $u = "$base/recognize?region=$region"
-    $resp = Invoke-RestMethod -Uri $u -Method Post -Form @{ upload = $fileItem } -TimeoutSec 60
-    Write-Host "Status: sucesso (multipart)" -ForegroundColor Green
-    return $resp
-  } catch {
-    Write-Host "Falha (multipart): $($_.Exception.Message)" -ForegroundColor Red
-    return $null
   }
 }
 
@@ -52,12 +35,12 @@ function Invoke-RecognizeBytes($base, $path, $region) {
 }
 
 function Invoke-RecognizeUrl($base, $url, $region) {
-  Write-Section "Reconhecimento por URL (baixa e envia)"
+  Write-Section "Reconhecimento por URL (baixa e envia como bytes)"
   if ([string]::IsNullOrWhiteSpace($url)) { Write-Host "URL não fornecida" -ForegroundColor Yellow; return $null }
   $tmp = New-TemporaryFile
   try {
     Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -TimeoutSec 30
-    $resp = Invoke-RecognizeFile $base $tmp $region
+    $resp = Invoke-RecognizeBytes $base $tmp $region
     Remove-Item $tmp -Force -ErrorAction SilentlyContinue
     return $resp
   } catch {
@@ -83,11 +66,8 @@ function Print-Result($label, $resp) {
 
 $okHealth = Test-Health $BaseUrl
 
-$respFile = $null
+$respBytes = $null
 if (-not [string]::IsNullOrWhiteSpace($ImagePath)) {
-  $respFile = Invoke-RecognizeFile $BaseUrl $ImagePath $Region
-  Print-Result "Resultado (multipart)" $respFile
-
   $respBytes = Invoke-RecognizeBytes $BaseUrl $ImagePath $Region
   Print-Result "Resultado (bytes)" $respBytes
 }
@@ -100,7 +80,6 @@ if (-not [string]::IsNullOrWhiteSpace($ImageUrl)) {
 
 Write-Section "Resumo"
 if ($okHealth -and (
-    ($respFile -and ($respFile.results -or $respFile.plates)) -or 
     ($respBytes -and ($respBytes.results -or $respBytes.plates)) -or 
     ($respUrl -and ($respUrl.results -or $respUrl.plates))
   )) {
@@ -113,9 +92,7 @@ if ($okHealth -and (
 }
 
 Write-Host "`nComo usar:" -ForegroundColor Cyan
-Write-Host "# Teste local com arquivo (multipart):" -ForegroundColor Cyan
-Write-Host (".\test_api.ps1 -BaseUrl 'http://localhost:5000/api' -ImagePath 'C:\\caminho\\para\\imagem.jpg' -Region 'br'") -ForegroundColor White
 Write-Host "# Teste local com bytes:" -ForegroundColor Cyan
-Write-Host (".\test_api.ps1 -BaseUrl 'http://localhost:5000/api' -ImagePath 'C:\\caminho\\para\\imagem.jpg' -Region 'br'") -ForegroundColor White
+Write-Host (".\test_api.ps1 -BaseUrl 'http://localhost:5001/api' -ImagePath 'C:\\caminho\\para\\imagem.jpg' -Region 'br'") -ForegroundColor White
 Write-Host "# Teste com URL:" -ForegroundColor Cyan
-Write-Host (".\test_api.ps1 -BaseUrl 'http://localhost:5000/api' -ImageUrl 'https://exemplo.com/placa.jpg' -Region 'br'") -ForegroundColor White
+Write-Host (".\test_api.ps1 -BaseUrl 'http://localhost:5001/api' -ImageUrl 'http://plates.openalpr.com/h786poj.jpg' -Region 'eu'") -ForegroundColor White

@@ -10,12 +10,26 @@ npm install
 
 ## Desenvolvimento
 
+1) Configure `.env` na raiz do projeto:
 ```
-npm run dev
+PLATERECOGNIZER_BASE_URL=https://api.platerecognizer.com
+PLATERECOGNIZER_API_KEY=SEU_TOKEN_AQUI
+ALPR_REGION=br
 ```
 
-- Servidor local: `http://localhost:5000`
-- Cliente: `http://localhost:3000`
+2) Suba o backend local (porta 5000):
+```
+npm run server
+```
+
+3) Suba o frontend (porta 3000):
+```
+cd client
+npm start
+```
+
+- Backend: `http://localhost:5000`
+- Frontend: `http://localhost:3000`
 
 Se a porta 3000 estiver ocupada, finalize o processo atual ou altere a porta do cliente.
 
@@ -42,9 +56,19 @@ Para testes custom locais, é possível usar `?fastapi=` para apontar um endpoin
 
 > Nota: Em produção (Vercel), o cliente não tenta FastAPI por padrão. A integração FastAPI só é acionada se você passar `?fastapionly=1` na URL e fornecer um endpoint via `?fastapi=`.
 
+## Teste rápido da API local
+
+Com o backend rodando em `http://localhost:5000`, você pode validar com um arquivo local:
+```
+# Exemplo no PowerShell
+powershell -File .\test_api.ps1 -BaseUrl 'http://localhost:5000/api' -ImagePath 'C:\caminho\para\imagem.jpg' -Region 'br'
+```
+
 ## Troubleshooting
 
-- Verifique no DevTools as chamadas para `/api/recognize-bytes` e `/api/recognize`.
-- Erros de autenticação: defina `PLATERECOGNIZER_API_KEY` na Vercel.
-- Performance de leitura: teste com quadro inteiro vs. recorte central no cliente.
+- Permissão da câmera: aceite o prompt do navegador; teste também em aba anônima.
+- DevTools > Network: confirme `POST /api/recognize` ou `POST /api/recognize-bytes` sem bloqueio.
+- Erros `missing_api_key`: crie `.env` local com `PLATERECOGNIZER_API_KEY` e reinicie o backend.
+- Em produção, defina as variáveis no projeto Vercel.
+- Performance de leitura: mantenha boa iluminação e estabilidade; a UI já solicita 1280x720 e ajusta o frame.
 

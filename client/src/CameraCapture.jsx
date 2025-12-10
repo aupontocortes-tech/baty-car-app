@@ -13,6 +13,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
   const [torchOn, setTorchOn] = useState(false)
   const [sendFullFrame, setSendFullFrame] = useState(true)
   const isAndroid = /Android/i.test(navigator.userAgent)
+  const frameRef = useRef(null)
 
   // Ajuste: manter quadro inteiro por padrão também na Vercel (pode melhorar leitura)
   useEffect(() => {
@@ -28,7 +29,14 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
     try {
       setActive(true)
       setStatus('aguardando')
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+      const constraints = { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }
+      let stream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints)
+      } catch (_e) {
+        // fallback se dispositivo não suportar resolução ideal
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+      }
       videoRef.current.srcObject = stream
       trackRef.current = stream.getVideoTracks && stream.getVideoTracks()[0]
       await videoRef.current.play()
@@ -42,6 +50,53 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
     }
   }
 
+  // Clique alterna leitura
+  const stop = () => {
+    try {
+      setActive(false)
+      setStatus('parado')
+      const t = timerRef.current
+      if (t) clearTimeout(t)
+      setReady(false)
+      const track = trackRef.current
+      if (track && typeof track.stop === 'function') track.stop()
+      const vid = videoRef.current
+      if (vid) {
+        try { vid.pause() } catch (_) {}
+        try { vid.srcObject = null } catch (_) {}
+      }
+      setTorchOn(false)
+    } catch (_) {}
+  }
+
+  const toggleActive = () => {
+    if (active) stop()
+    else start()
+  }
+
+  const toggleTorch = async () => {
+    const t = trackRef.current
+    try {
+      const caps = t && t.getCapabilities && t.getCapabilities()
+      if (!caps || !caps.torch) return
+      const next = !torchOn
+      setTorchOn(next)
+      await t.applyConstraints({ advanced: [{ torch: next }] }).catch(() => {})
+    } catch (_e) {}
+  }
+
+  const ensureTorchOn = async () => {
+    const t = trackRef.current
+    try {
+      const caps = t && t.getCapabilities && t.getCapabilities()
+      if (!caps || !caps.torch) return false
+      if (torchOn) return true
+      setTorchOn(true)
+      await t.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {})
+      return true
+    } catch (_e) { return false }
+  }
+
   const capture = async () => {
     if (!videoRef.current) return
     setBusy(true)
@@ -49,20 +104,63 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const video = videoRef.current
       const w = video.videoWidth || 640
       const h = video.videoHeight || 480
-      const targetW = Math.min(960, w)
+      const targetW = Math.min(isAndroid ? 1024 : 1280, w)
       const targetH = Math.round(targetW * (h / w))
       const srcCanvas = document.createElement('canvas')
       srcCanvas.width = targetW
       srcCanvas.height = targetH
       const sctx = srcCanvas.getContext('2d')
+      // Pré-processamento leve opcional para aumentar contraste/brilho
+      if (procToggle) {
+        try { sctx.filter = 'contrast(1.25) brightness(1.08) saturate(1.05)'; } catch (_) {}
+      }
       sctx.drawImage(video, 0, 0, targetW, targetH)
-      // crop central region unless sending full frame
+      // Se escuro, tentar ligar o flash automaticamente (Android / suportado)
+      try {
+        const sampleW = Math.min(320, targetW)
+        const sampleH = Math.min(240, targetH)
+        const id = sctx.getImageData(0, 0, sampleW, sampleH)
+        const d = id.data
+        let sum = 0
+        for (let i = 0; i < d.length; i += 4) {
+          const r = d[i], g = d[i+1], b = d[i+2]
+          sum += 0.2126*r + 0.7152*g + 0.0722*b
+        }
+        const avgLum = sum / (sampleW*sampleH)
+        if (avgLum < 55 && isAndroid) await ensureTorchOn()
+      } catch (_) {}
+      // crop guiado pelo frame visual, quando desativado envio de quadro inteiro
       let frameCanvas = srcCanvas
       if (!sendFullFrame) {
-        const cropW = Math.round(targetW * 0.9)
-        const cropH = Math.round(targetH * 0.65)
-        const cropX = Math.round((targetW - cropW) / 2)
-        const cropY = Math.round((targetH - cropH) / 2)
+        const videoRect = video.getBoundingClientRect()
+        const frameEl = frameRef.current
+        const frameRect = frameEl ? frameEl.getBoundingClientRect() : null
+        let cropX, cropY, cropW, cropH
+        if (frameRect && videoRect && videoRect.width > 0 && videoRect.height > 0) {
+          const relLeft = (frameRect.left - videoRect.left) / videoRect.width
+          const relTop = (frameRect.top - videoRect.top) / videoRect.height
+          const relW = frameRect.width / videoRect.width
+          const relH = frameRect.height / videoRect.height
+          cropW = Math.round(targetW * relW)
+          cropH = Math.round(targetH * relH)
+          cropX = Math.round(targetW * relLeft)
+          cropY = Math.round(targetH * relTop)
+          try {
+            const qs = new URLSearchParams(window.location.search)
+            if (qs.get('debug') === '1') {
+              console.log('[overlay] videoRect', videoRect)
+              console.log('[overlay] frameRect', frameRect)
+              console.log('[overlay] rel', { relLeft, relTop, relW, relH })
+              console.log('[overlay] crop', { cropX, cropY, cropW, cropH, targetW, targetH })
+            }
+          } catch (_) {}
+        } else {
+          // fallback: centro aproximado
+          cropW = Math.round(targetW * 0.85)
+          cropH = Math.round(targetH * 0.55)
+          cropX = Math.round((targetW - cropW) / 2)
+          cropY = Math.round((targetH - cropH) / 2)
+        }
         const cropCanvas = document.createElement('canvas')
         cropCanvas.width = cropW
         cropCanvas.height = cropH
@@ -70,7 +168,8 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         cctx.drawImage(srcCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH)
         frameCanvas = cropCanvas
       }
-      let blob = await new Promise(resolve => frameCanvas.toBlob(resolve, 'image/jpeg', 0.96))
+      const jpegQuality = isAndroid ? 0.88 : 0.96
+      let blob = await new Promise(resolve => frameCanvas.toBlob(resolve, 'image/jpeg', jpegQuality))
       if (!blob) {
         const dataUrl = frameCanvas.toDataURL('image/jpeg', 0.9)
         const comma = dataUrl.indexOf(',')
@@ -84,9 +183,13 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const file = new File([blob], 'frame.jpg', { type: 'image/jpeg' })
       let data
       const origin = typeof window !== 'undefined' ? window.location.origin : ''
-      const isDevCRA = /localhost:3000$/i.test(origin)
+      // Tratamento de dev: CRA pode rodar em 3000 ou 3001
+      const isDevCRA = /localhost:(3000|3001)$/i.test(origin)
       const host = (() => { try { return new URL(origin).host } catch (_e) { return origin } })()
       const isVercel = /vercel\.app$/i.test(String(host))
+
+      // Região: permitir override via query (?region=br|us|eu), padrão 'br'
+      const regionParam = (() => { try { const qs = new URLSearchParams(window.location.search); const r = (qs.get('region') || 'br').toLowerCase(); return ['br','us','eu'].includes(r) ? r : 'br' } catch (_) { return 'br' } })()
 
       // Bases específicas: FastAPI fixo em produção Vercel e padrão remoto também no dev
       const envBaseRaw = ((process.env.REACT_APP_FASTAPI_BASE || process.env.REACT_APP_API_BASE) || '').trim()
@@ -99,12 +202,34 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         const qp = qs && qs.get('fastapi')
         if (qp && /^https?:\/\//i.test(qp)) fastApiBase = qp.replace(/\/+$/,'')
       } catch (_) {}
-      const apiOriginBase = (isDevCRA ? 'http://localhost:5000' : origin).replace(/\/+$/,'')
+      // Ajuste: default do backend local é 5001 (não 5000)
+      let apiOriginBase = (isDevCRA ? 'http://localhost:5001' : origin).replace(/\/+$/,'')
+      // Override de API base via env (REACT_APP_API_BASE) e via query (?api=https://...)
+      try {
+        const envApiBaseRaw = (process.env.REACT_APP_API_BASE || '').trim()
+        if (isDevCRA) {
+          // No dev, permitir qualquer override absoluto
+          if (/^https?:\/\//i.test(envApiBaseRaw)) apiOriginBase = envApiBaseRaw.replace(/\/+$/,'')
+        } else {
+          // Em produção, só aceitar override se for o MESMO host e HTTPS (evita mixed content)
+          if (/^https?:\/\//i.test(envApiBaseRaw)) {
+            try {
+              const u = new URL(envApiBaseRaw)
+              const sameHost = (u.host === host) && (u.protocol === 'https:')
+              if (sameHost) apiOriginBase = u.origin
+            } catch (_) {}
+          }
+        }
+        const qs2 = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+        const qp2 = qs2 && qs2.get('api')
+        // Em produção, restringir override via query a HTTPS para evitar bloqueio do navegador
+        if (qp2 && (/^https:\/\//i.test(qp2) || isDevCRA)) apiOriginBase = qp2.replace(/\/+$/,'')
+      } catch (_) {}
       // Flag para desativar fallback e forçar FastAPI explicitamente: ?fastapionly=1
       const fastApiOnly = (() => { try { const p = new URLSearchParams(window.location.search).get('fastapionly'); return p === '1' } catch (_) { return false } })()
       const preferFastApiOnly = !!fastApiOnly
-      // Produção usa exclusivamente /api/* no mesmo domínio; FastAPI só se solicitado via fastapionly
-      const shouldTryFastApi = preferFastApiOnly
+      // Em produção, tentar FastAPI como fallback (primeiro); no dev, só se fastapionly=1
+      const shouldTryFastApi = preferFastApiOnly || (!isDevCRA)
 
       const pickPlateFromData = (d) => {
         const first = Array.isArray(d?.plates) ? d.plates[0] : null
@@ -127,20 +252,21 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
           if (hasPath) return u.toString()
           // Caso contrário, usar /read-plate padrão.
           u.pathname = '/read-plate'
-          u.search = '?region=br'
+          u.search = `?region=${encodeURIComponent(regionParam)}`
           return u.toString()
         } catch (_e) {
           // Fallback básico
-          return `${fastApiBase}/read-plate?region=br`
+          return `${fastApiBase}/read-plate?region=${encodeURIComponent(regionParam)}`
         }
       }
 
       let best = null
       const attempts = []
+      const timeoutMs = isAndroid ? 15000 : 12000
       // 1) FastAPI (suporta tanto endpoint completo quanto /read-plate) — desativado por padrão no local
       if (shouldTryFastApi) {
         const controller2 = new AbortController()
-        const timeoutId2 = setTimeout(() => controller2.abort(), 12000)
+        const timeoutId2 = setTimeout(() => controller2.abort(), timeoutMs)
         const u2 = resolveFastApiEndpoint()
         try {
           console.log('[alpr] tentando FastAPI:', u2)
@@ -169,11 +295,11 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         clearTimeout(timeoutId2)
       }
 
-      // 2) multipart para /api/recognize (mesmo domínio)
+      // 2) multipart para /api/recognize (mesmo domínio ou override)
       if (!best && !preferFastApiOnly) {
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 12000)
-        const u1 = `${apiOriginBase}/api/recognize?region=br`
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+        const u1 = `${apiOriginBase}/api/recognize?region=${encodeURIComponent(regionParam)}`
         const fd = new FormData()
         fd.append('frame', file)
         try {
@@ -195,11 +321,11 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         clearTimeout(timeoutId)
       }
 
-      // 3) bytes para /api/recognize-bytes (mesmo domínio)
+      // 3) bytes para /api/recognize-bytes (mesmo domínio ou override)
       if (!best && !preferFastApiOnly) {
         const controller3 = new AbortController()
-        const timeoutId3 = setTimeout(() => controller3.abort(), 12000)
-        const u3 = `${apiOriginBase}/api/recognize-bytes?region=br`
+        const timeoutId3 = setTimeout(() => controller3.abort(), timeoutMs)
+        const u3 = `${apiOriginBase}/api/recognize-bytes?region=${encodeURIComponent(regionParam)}`
         try {
           console.log('[alpr] tentando Node /api/recognize-bytes:', u3)
           const resp3 = await fetch(u3, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob, signal: controller3.signal, mode: 'cors', credentials: 'omit' })
@@ -219,97 +345,65 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         clearTimeout(timeoutId3)
       }
 
+      const hadResponseNoPlate = attempts.some(a => (typeof a.status === 'number') && !pickPlateFromData(a.data))
+      const allFailed = attempts.every(a => a && (a.error || (!a.ok && !a.status)))
+      if (!best) {
+        const info = allFailed ? { error: 'fetch_failed', detail: 'all_routes_failed', attempts } : { error: 'no_plate', detail: hadResponseNoPlate ? 'no_plate_from_provider' : 'no_attempt' }
+        if (onError) onError(info)
+      }
       if (best && onRecognize) {
         onRecognize([best])
-      } else if (!best && onError) {
-        console.warn('[alpr] todas as rotas falharam', attempts)
-        onError({ error: 'fetch_failed', detail: 'all_routes_failed', attempts })
       }
+    } catch (e) {
+      const msg = String((e && e.message) || e)
+      if (onError) onError({ error: 'exception', detail: msg })
     } finally {
       setBusy(false)
     }
   }
 
   useEffect(() => {
-    if (!active || !ready) {
-      if (timerRef.current) {
-        clearInterval(timerRef.current)
-        timerRef.current = null
-      }
-      return
-    }
-    if (!timerRef.current) {
-      timerRef.current = setInterval(() => {
-        if (!busy) capture()
-      }, 250)
-    }
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current)
-        timerRef.current = null
-      }
-    }
-  }, [active, ready, busy, sendFullFrame])
+    if (!active || busy || !ready) return
+    const t = setTimeout(() => capture(), 800)
+    timerRef.current = t
+    return () => clearTimeout(t)
+  }, [active, busy, ready, procToggle, sendFullFrame])
 
   useEffect(() => {
     return () => {
-      const s = videoRef.current && videoRef.current.srcObject
-      if (s && s.getTracks) s.getTracks().forEach(t => t.stop())
+      try {
+        const t = timerRef.current
+        if (t) clearTimeout(t)
+      } catch (_) {}
+      try {
+        const track = trackRef.current
+        if (track && typeof track.stop === 'function') track.stop()
+      } catch (_) {}
     }
   }, [])
 
-  const toggleTorch = async () => {
-    const t = trackRef.current
-    try {
-      const caps = t && t.getCapabilities && t.getCapabilities()
-      if (!caps || !caps.torch) return
-      const next = !torchOn
-      setTorchOn(next)
-      await t.applyConstraints({ advanced: [{ torch: next }] }).catch(() => {})
-    } catch (_e) {}
-  }
-
-  const stop = () => {
-    setActive(false)
-    if (timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
-    }
-    const s = videoRef.current && videoRef.current.srcObject
-    if (s && s.getTracks) s.getTracks().forEach(t => t.stop())
-    if (videoRef.current) videoRef.current.srcObject = null
-    setReady(false)
-    setStatus('aguardando')
-  }
-
   return (
     <div>
-      <div className="video-wrap">
-        <video className="video" ref={videoRef} playsInline muted style={{ display: active && !previewProcessed ? 'block' : 'none' }} />
-        <div className="overlay">
-          <div className="frame" />
-        </div>
-      </div>
-      <div className="actions" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button className="button" onClick={active ? stop : start} disabled={!active && busy}>
-          {active ? 'Parar Leitura' : 'Ler Placas'}
-        </button>
-        <button className="button" onClick={toggleTorch} title={torchOn ? 'Desligar flash' : 'Ligar flash'} style={{ width: 44 }}>
-          ⚡
-        </button>
-        <label style={{ fontSize: 12, color: '#5b6b84' }}>
-          <input type="checkbox" checked={sendFullFrame} onChange={e => setSendFullFrame(e.target.checked)} /> Enviar quadro inteiro
+      <div className="actions-center" style={{ gap: 8, marginBottom: 8 }}>
+        <button className="button" onClick={active ? stop : start}>{active ? 'Parar Leitura' : 'Ler Placas'}</button>
+        <button className="button" onClick={toggleTorch} disabled={!ready}>Lanterna {torchOn ? 'On' : 'Off'}</button>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={sendFullFrame} onChange={e => setSendFullFrame(e.target.checked)} />
+          Enviar quadro inteiro
         </label>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={procToggle} onChange={e => setProcToggle(e.target.checked)} />
+          Pré-processar
+        </label>
+        <span className="chip" style={{ background: '#eef' }}>Status: {status}</span>
       </div>
-      {!active && (
-        <div style={{ marginTop: 10, textAlign: 'center', color: '#5b6b84', fontSize: 14 }}>
-          {status === 'aguardando' && 'Clique em Ler Placas e permita o uso da câmera.'}
-          {status === 'permissao_negada' && 'Permissão negada. Habilite a câmera no navegador.'}
-          {status === 'camera_nao_encontrada' && 'Nenhuma câmera encontrada.'}
-          {status === 'erro_camera' && 'Erro ao acessar a câmera.'}
+      <div className="video-wrap" style={{ display: 'flex', justifyContent: 'center', position: 'relative' }}>
+        <video ref={videoRef} autoPlay muted playsInline className="video" style={{ maxWidth: '100%', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.2)' }} />
+        <div className="overlay">
+          <div className="frame" ref={frameRef} onClick={toggleActive} style={{ cursor: 'pointer' }} />
         </div>
-      )}
-      <canvas ref={canvasRef} style={{ display: active && previewProcessed ? 'block' : 'none', width: '100%' }} />
+        <canvas ref={canvasRef} style={{ display: 'none' }} />
+      </div>
     </div>
   )
 }

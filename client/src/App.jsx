@@ -4,7 +4,8 @@ import ResultsTable from './ResultsTable'
  
 export default function App() {
   const [records, setRecords] = useState([])
-  const minConfidence = 30
+  const minConfidence = 20
+  const minConfidenceRelaxed = 15
   const seen = useMemo(() => new Set(records.map(r => r.plate)), [records])
   const lastPlates = useMemo(() => records.slice(0, 5).map(r => r.plate), [records])
   const API_BASE = (process.env.REACT_APP_API_BASE || '').replace(/\/+$/,'')
@@ -44,18 +45,60 @@ export default function App() {
       s = s.slice(0, 7)
       return mercosul.test(s) ? s : null
     }
+    // Heurística: corrigir confusões comuns para encaixar no padrão Mercosul
+    const fixMercosul = (raw) => {
+      let s = normalize(raw)
+      if (!s) return null
+      s = s.slice(0, 7)
+      if (mercosul.test(s)) return s
+      const a = s.split('')
+      const mapDigit = (ch) => ({ 'O':'0','Q':'0','D':'0','I':'1','L':'1','Z':'2','S':'5','B':'8','G':'6','T':'7' }[ch] || ch)
+      const mapLetter = (ch) => ({ '0':'O','1':'I','2':'Z','5':'S','8':'B','6':'G','7':'T' }[ch] || ch)
+      // Enforce letras nas posições 0..2
+      for (let i = 0; i < 3; i++) a[i] = mapLetter(a[i])
+      // Dígito na posição 3
+      a[3] = mapDigit(a[3])
+      // Letra na posição 4
+      a[4] = mapLetter(a[4])
+      // Dígitos nas posições 5 e 6
+      a[5] = mapDigit(a[5])
+      a[6] = mapDigit(a[6])
+      const s2 = a.join('')
+      return mercosul.test(s2) ? s2 : null
+    }
+
     const candidates = []
     items.forEach(p => {
       candidates.push({ plate: p.plate, confidence: p.confidence })
     })
+
+    const rejections = []
+    const valid = []
     let best = null
     candidates.forEach(c => {
-      const fixed = toMercosul(c.plate)
-      if (!fixed) return
-      if (typeof c.confidence !== 'number' || c.confidence < minConfidence) return
-      if (seen.has(fixed)) return
-      if (!best || c.confidence > best.confidence) best = { plate: fixed, confidence: c.confidence }
+      const raw7 = normalize(c.plate).slice(0, 7)
+      const fixed = toMercosul(c.plate) || fixMercosul(c.plate)
+      if (!fixed) { rejections.push({ plate: raw7, reason: 'formato inválido' }); return }
+      if (seen.has(fixed)) { rejections.push({ plate: fixed, reason: 'duplicada' }); return }
+      valid.push({ plate: fixed, confidence: c.confidence })
+      if (typeof c.confidence === 'number' && c.confidence >= minConfidence) {
+        if (!best || c.confidence > best.confidence) best = { plate: fixed, confidence: c.confidence }
+      } else {
+        rejections.push({ plate: fixed, reason: 'confiança baixa' })
+      }
     })
+
+    let acceptedMode = 'normal'
+    if (!best && valid.length > 0) {
+      const weak = valid
+        .filter(v => (typeof v.confidence === 'number' && v.confidence >= minConfidenceRelaxed))
+        .sort((a, b) => b.confidence - a.confidence)[0]
+      if (weak) {
+        best = { plate: weak.plate, confidence: weak.confidence }
+        acceptedMode = 'relaxed'
+      }
+    }
+
     if (best) {
       const row = { plate: best.plate, confidence: best.confidence, region: 'br', timestamp: tsStr }
       setRecords(prev => [row, ...prev])
@@ -70,7 +113,7 @@ export default function App() {
       // limpar qualquer erro anterior após sucesso
       setErrorMsg('')
     }
-    if (debug) setDebugInfo({ items })
+    if (debug) setDebugInfo({ items, rejections, acceptedMode })
   }
 
   const promptInstall = () => {
@@ -237,6 +280,11 @@ export default function App() {
                         <li key={i}>{r.plate} - {r.reason}</li>
                       ))}
                     </ul>
+                  </div>
+                )}
+                {debugInfo.acceptedMode && (
+                  <div style={{ marginTop: 8 }}>
+                    <div>Modo de aceitação: {debugInfo.acceptedMode}</div>
                   </div>
                 )}
               </div>
