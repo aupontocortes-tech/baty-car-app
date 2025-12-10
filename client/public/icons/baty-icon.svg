@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#3aa0ff"/>
+      <stop offset="100%" stop-color="#1e6fe6"/>
+    </radialGradient>
+  </defs>
+  <circle cx="256" cy="256" r="230" fill="url(#bg)" stroke="#0f2b44" stroke-width="26"/>
+  <g fill="#0f2b44">
+    <path d="M160 168c0-36 28-64 64-64h64c36 0 64 28 64 64v24c0 4-4 8-8 8H168c-4 0-8-4-8-8v-24zm38 166c0-7 6-12 13-12h90c7 0 13 5 13 12v12c0 4-3 8-7 8H205c-4 0-7-4-7-8v-12z" opacity="0.0"/>
+    <!-- Letter B -->
+    <text x="256" y="210" font-family="Inter, Arial, sans-serif" font-size="180" font-weight="700" text-anchor="middle" dominant-baseline="middle" fill="#ffffff">B</text>
+    <!-- Car silhouette -->
+    <g transform="translate(0,40)">
+      <rect x="160" y="280" width="192" height="88" rx="22" fill="#0f2b44"/>
+      <rect x="190" y="300" width="132" height="36" rx="12" fill="#ffffff" opacity="0.15"/>
+      <circle cx="200" cy="380" r="22" fill="#0f2b44" stroke="#0f2b44"/>
+      <circle cx="312" cy="380" r="22" fill="#0f2b44" stroke="#0f2b44"/>
+      <circle cx="200" cy="352" r="16" fill="#ffffff"/>
+      <circle cx="312" cy="352" r="16" fill="#ffffff"/>
+      <rect x="228" y="344" width="56" height="12" rx="6" fill="#ffffff"/>
+      <rect x="180" y="260" width="152" height="32" rx="10" fill="#0f2b44"/>
+      <path d="M180 260c20-24 44-44 96-44s76 20 96 44" fill="none" stroke="#0f2b44" stroke-width="20" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>

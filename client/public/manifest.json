@@ -7,6 +7,12 @@
   "theme_color": "#1e6fe6",
   "icons": [
     {
+      "src": "/icons/baty-icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
       "src": "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/26a1.png",
       "sizes": "72x72",
       "type": "image/png",
