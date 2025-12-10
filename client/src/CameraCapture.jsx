@@ -142,7 +142,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const video = videoRef.current
       const w = video.videoWidth || 640
       const h = video.videoHeight || 480
-      const targetW = Math.min(isAndroid ? 720 : 900, w)
+      const targetW = Math.min(isAndroid ? 640 : 800, w)
       const targetH = Math.round(targetW * (h / w))
       const srcCanvas = document.createElement('canvas')
       srcCanvas.width = targetW
@@ -152,10 +152,28 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       // Sempre recortar ROI central estreita para focar na placa
       let frameCanvas = srcCanvas
       {
-        const cropW = Math.round(targetW * 0.75)
-        const cropH = Math.round(targetH * 0.40)
+        // Defaults mais apertados
+        let roiW = 0.65, roiH = 0.32, roiCenterY = 0.58
+        try {
+          const qs = new URLSearchParams(window.location.search)
+          const p = qs.get('roi') // formato: w=0.65,h=0.32,cy=0.58
+          if (p) {
+            const parts = p.split(',')
+            for (const part of parts) {
+              const [k,v] = part.split('=')
+              const num = parseFloat(v)
+              if (k === 'w' && num > 0.1 && num < 0.95) roiW = num
+              if (k === 'h' && num > 0.1 && num < 0.95) roiH = num
+              if (k === 'cy' && num > 0.1 && num < 0.95) roiCenterY = num
+            }
+          }
+        } catch (_) {}
+        const cropW = Math.round(targetW * roiW)
+        const cropH = Math.round(targetH * roiH)
         const cropX = Math.round((targetW - cropW) / 2)
-        const cropY = Math.round((targetH - cropH) / 2)
+        const desiredCenterY = Math.round(targetH * roiCenterY)
+        const initialY = desiredCenterY - Math.round(cropH / 2)
+        const cropY = Math.max(0, Math.min(targetH - cropH, initialY))
         const cropCanvas = document.createElement('canvas')
         cropCanvas.width = cropW
         cropCanvas.height = cropH
@@ -163,7 +181,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         cctx.drawImage(srcCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH)
         frameCanvas = cropCanvas
       }
-      const jpegQuality = isAndroid ? 0.80 : 0.86
+      const jpegQuality = isAndroid ? 0.75 : 0.82
       let blob = await new Promise(resolve => frameCanvas.toBlob(resolve, 'image/jpeg', jpegQuality))
       if (!blob) {
         const dataUrl = frameCanvas.toDataURL('image/jpeg', 0.9)
