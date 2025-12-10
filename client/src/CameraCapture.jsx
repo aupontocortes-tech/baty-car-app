@@ -450,6 +450,8 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       <div className="video-wrap" style={{ display: 'flex', justifyContent: 'center', position: 'relative' }}>
         <video ref={videoRef} autoPlay muted playsInline className="video" style={{ maxWidth: '100%', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.2)' }} />
         <canvas ref={canvasRef} style={{ display: 'none' }} />
+        {/* Ponto de foco para posicionar a placa: ROI_CX=0.50, ROI_CY=0.60 */}
+        <div style={{ position: 'absolute', left: '50%', top: '60%', transform: 'translate(-50%, -50%)', width: 12, height: 12, borderRadius: '50%', background: '#ff3b30', boxShadow: '0 0 0 2px rgba(255,59,48,0.5)', pointerEvents: 'none' }} title="Posicione a placa aqui" />
       </div>
     </div>
   )

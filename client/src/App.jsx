@@ -207,6 +207,16 @@ export default function App() {
     startFlowForPlate(plate, tsStr)
     setManualPlate('')
   }
+  
+  // Excluir entrada salva ao clicar na linha
+  const handleDeleteEntry = (idx) => {
+    try {
+      const entry = savedEntries[idx]
+      const ok = window.confirm(`Excluir cadastro da placa ${entry?.placa || ''}?`)
+      if (!ok) return
+    } catch (_e) {}
+    setSavedEntries(prev => prev.filter((_, i) => i !== idx))
+  }
 
   return (
     <div className="container">
@@ -371,7 +381,7 @@ export default function App() {
             </div>
           )}
           <div className="card" style={{ marginTop: 12 }}>
-            <ResultsTable rows={savedEntries} />
+            <ResultsTable rows={savedEntries} onDelete={handleDeleteEntry} />
           </div>
         </div>
       </div>
