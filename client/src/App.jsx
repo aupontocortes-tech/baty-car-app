@@ -16,6 +16,49 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState('')
   const [manualPlate, setManualPlate] = useState('')
   const [installEvt, setInstallEvt] = useState(null)
+  // Estado para entradas salvas conforme schema solicitado
+  const [savedEntries, setSavedEntries] = useState([])
+  const [flowActive, setFlowActive] = useState(false)
+  const [flowStep, setFlowStep] = useState('choose-order') // 'choose-order' | 'fill-loja' | 'fill-lava' | 'confirm'
+  const [flowOrder, setFlowOrder] = useState(null) // 'loja-first' | 'lava-first'
+  const [draftEntry, setDraftEntry] = useState({ placa: '', data: '', loja: '', lava_jato: '' })
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('SAVED_ENTRIES')
+      if (raw) setSavedEntries(JSON.parse(raw))
+    } catch (_) {}
+  }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('SAVED_ENTRIES', JSON.stringify(savedEntries))
+    } catch (_) {}
+  }, [savedEntries])
+
+  const startFlowForPlate = (plate, tsStr) => {
+    setDraftEntry({ placa: plate, data: tsStr, loja: '', lava_jato: '' })
+    setFlowActive(true)
+    setFlowStep('choose-order')
+    setFlowOrder(null)
+  }
+
+  const chooseOrder = (first) => {
+    const order = first === 'loja' ? 'loja-first' : 'lava-first'
+    setFlowOrder(order)
+    setFlowStep(order === 'loja-first' ? 'fill-loja' : 'fill-lava')
+  }
+
+  const proceedAfterLoja = () => setFlowStep('fill-lava')
+  const proceedAfterLava = () => setFlowStep(flowOrder === 'lava-first' ? 'fill-loja' : 'confirm')
+
+  const saveCurrentEntry = () => {
+    setSavedEntries(prev => [{ ...draftEntry }, ...prev])
+    setFlowActive(false)
+    setFlowStep('choose-order')
+    setFlowOrder(null)
+    setDraftEntry({ placa: '', data: '', loja: '', lava_jato: '' })
+  }
 
   const beep = () => {
     try {
@@ -112,6 +155,8 @@ export default function App() {
       setTimeout(() => setSuccessPlate(''), 900)
       // limpar qualquer erro anterior após sucesso
       setErrorMsg('')
+      // iniciar fluxo de cadastro conforme solicitação
+      startFlowForPlate(best.plate, tsStr)
     }
     if (debug) setDebugInfo({ items, rejections, acceptedMode })
   }
@@ -155,24 +200,12 @@ export default function App() {
   }, [])
 
   const handleManualRegister = () => {
-    const normalize = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
-    const mercosul = /^[A-Z]{3}[0-9][A-Z][0-9]{2}$/
-    const p = normalize(manualPlate)
-    if (!mercosul.test(p)) {
-      setErrorMsg('Placa inválida. Formato Mercosul: AAA1A23')
-      return
-    }
-    if ([...seen].includes(p)) {
-      setErrorMsg('Placa já registrada na lista')
-      return
-    }
     const tsStr = new Date().toISOString()
-    setRecords(prev => [{ plate: p, confidence: 99, region: 'br', timestamp: tsStr }, ...prev])
+    const normalize = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+    const plate = normalize(manualPlate).slice(0, 7)
+    if (!plate) return
+    startFlowForPlate(plate, tsStr)
     setManualPlate('')
-    beep()
-    setSuccessPlate(p)
-    setTimeout(() => setSuccessPlate(''), 900)
-    setErrorMsg('')
   }
 
   return (
@@ -218,6 +251,48 @@ export default function App() {
               }}
             />
           </div>
+          {/* Fluxo de cadastro flexível */}
+          {flowActive && (
+            <div className="card" style={{ marginTop: 12 }}>
+              <div className="badge">Cadastro</div>
+              {flowStep === 'choose-order' && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ marginBottom: 8, fontWeight: 600 }}>Deseja preencher primeiro Loja ou Lava Jato?</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="button" onClick={() => chooseOrder('loja')}>Loja primeiro</button>
+                    <button className="button" onClick={() => chooseOrder('lava')}>Lava Jato primeiro</button>
+                  </div>
+                  <div style={{ marginTop: 12, fontSize: 12, color: '#5b6b84' }}>
+                    Placa: {draftEntry.placa} • Data: {draftEntry.data}
+                  </div>
+                </div>
+              )}
+              {flowStep === 'fill-loja' && (
+                <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                  <input type="text" placeholder="Loja" value={draftEntry.loja} onChange={e => setDraftEntry(prev => ({ ...prev, loja: e.target.value }))} style={{ flex: 1, minWidth: 220 }} />
+                  <button className="button" onClick={proceedAfterLoja} disabled={!draftEntry.loja}>Continuar</button>
+                </div>
+              )}
+              {flowStep === 'fill-lava' && (
+                <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                  <input type="text" placeholder="Lava Jato" value={draftEntry.lava_jato} onChange={e => setDraftEntry(prev => ({ ...prev, lava_jato: e.target.value }))} style={{ flex: 1, minWidth: 220 }} />
+                  <button className="button" onClick={proceedAfterLava} disabled={!draftEntry.lava_jato}>Continuar</button>
+                </div>
+              )}
+              {flowStep === 'confirm' && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Confirmar cadastro</div>
+                  <div style={{ fontSize: 12, color: '#5b6b84', marginBottom: 8 }}>
+                    Placa: {draftEntry.placa} • Data: {draftEntry.data} • Loja: {draftEntry.loja} • Lava Jato: {draftEntry.lava_jato}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="button" onClick={saveCurrentEntry}>Salvar</button>
+                    <button className="button" onClick={() => setFlowActive(false)}>Cancelar</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {/* removed API Base UI */}
           <div className="card" style={{ marginTop: 12 }}>
             <div className="actions-center">
@@ -296,7 +371,7 @@ export default function App() {
             </div>
           )}
           <div className="card" style={{ marginTop: 12 }}>
-            <ResultsTable rows={records} />
+            <ResultsTable rows={savedEntries} />
           </div>
         </div>
       </div>

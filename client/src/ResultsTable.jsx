@@ -8,14 +8,18 @@ export default function ResultsTable({ rows }) {
         <thead>
           <tr>
             <th>Placa</th>
-            <th>Data/Hora</th>
+            <th>Data</th>
+            <th>Loja</th>
+            <th>Lava Jato</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r, idx) => (
             <tr key={idx}>
-              <td>{r.plate}</td>
-              <td>{r.timestamp}</td>
+              <td>{r.placa}</td>
+              <td>{r.data}</td>
+              <td>{r.loja}</td>
+              <td>{r.lava_jato}</td>
             </tr>
           ))}
         </tbody>
