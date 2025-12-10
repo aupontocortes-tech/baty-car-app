@@ -244,15 +244,18 @@ export default function App() {
                 const isFetchFail = info && info.error === 'fetch_failed'
                 const hasMissingKey = Array.isArray(info?.attempts) && info.attempts.some(a => String(a?.data?.error) === 'missing_api_key')
                 const hasProviderFail = Array.isArray(info?.attempts) && info.attempts.some(a => String(a?.data?.error) === 'platerecognizer_failed')
+                const isNoPlate = info && info.error === 'no_plate'
+                // Não exibir erro visual quando apenas não foi detectada placa nesta tentativa
+                if (isNoPlate) { setErrorMsg(''); return }
                 const msg = hasMissingKey
                   ? 'Chave da API ausente. Defina PLATERECOGNIZER_API_KEY no .env (local) ou na Vercel.'
                   : (hasProviderFail
                     ? 'Falha na integração com Plate Recognizer. Verifique a chave e conexão.'
                     : (allFailed
-                      ? 'Erro: API não acessível. Publique front e backend no mesmo domínio HTTPS.'
+                      ? 'API não acessível. Publique front e backend no mesmo domínio HTTPS.'
                       : (isFetchFail
-                        ? 'Erro: falha de rede ou CORS na rota atual; tentando fallback.'
-                        : `Erro: ${String(info && info.error || 'desconhecido')}`)))
+                        ? 'Falha de rede ou CORS na rota atual; tentando fallback.'
+                        : String(info && info.error || 'desconhecido'))))
                 setErrorMsg(msg)
                 if (debug && info && Array.isArray(info.attempts)) {
                   try { console.warn('attempts:', info.attempts) } catch (_e) {}
