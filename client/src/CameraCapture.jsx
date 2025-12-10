@@ -22,7 +22,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
   const ROI_WIDTH = 0.55  // 55% da tela
   const ROI_HEIGHT = 0.26 // 26% da tela
   const ROI_CX = 0.50     // centro horizontal
-  const ROI_CY = 0.60     // mais baixo, onde ficam as placas
+  const ROI_CY = 0.55     // mais central para evitar ficar muito baixo
   useEffect(() => { if (fastMode) setSendFullFrame(false) }, [fastMode])
   const start = async () => {
     try {
