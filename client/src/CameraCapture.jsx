@@ -142,63 +142,20 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const video = videoRef.current
       const w = video.videoWidth || 640
       const h = video.videoHeight || 480
-      const targetW = Math.min(isAndroid ? (fastMode ? 720 : 1024) : (fastMode ? 900 : 1280), w)
+      const targetW = Math.min(isAndroid ? 720 : 900, w)
       const targetH = Math.round(targetW * (h / w))
       const srcCanvas = document.createElement('canvas')
       srcCanvas.width = targetW
       srcCanvas.height = targetH
       const sctx = srcCanvas.getContext('2d')
-      // Pré-processamento leve opcional para aumentar contraste/brilho
-      if (procToggle) {
-        try { sctx.filter = 'contrast(1.25) brightness(1.08) saturate(1.05)'; } catch (_) {}
-      }
       sctx.drawImage(video, 0, 0, targetW, targetH)
-      // Se escuro, tentar ligar o flash automaticamente (Android / suportado)
-      try {
-        const sampleW = Math.min(320, targetW)
-        const sampleH = Math.min(240, targetH)
-        const id = sctx.getImageData(0, 0, sampleW, sampleH)
-        const d = id.data
-        let sum = 0
-        for (let i = 0; i < d.length; i += 4) {
-          const r = d[i], g = d[i+1], b = d[i+2]
-          sum += 0.2126*r + 0.7152*g + 0.0722*b
-        }
-        const avgLum = sum / (sampleW*sampleH)
-        if (avgLum < 55 && isAndroid) await ensureTorchOn()
-      } catch (_) {}
-      // crop guiado pelo frame visual, quando desativado envio de quadro inteiro
+      // Sempre recortar ROI central estreita para focar na placa
       let frameCanvas = srcCanvas
-      if (!sendFullFrame) {
-        const videoRect = video.getBoundingClientRect()
-        const frameEl = frameRef.current
-        const frameRect = frameEl ? frameEl.getBoundingClientRect() : null
-        let cropX, cropY, cropW, cropH
-        if (frameRect && videoRect && videoRect.width > 0 && videoRect.height > 0) {
-          const relLeft = (frameRect.left - videoRect.left) / videoRect.width
-          const relTop = (frameRect.top - videoRect.top) / videoRect.height
-          const relW = frameRect.width / videoRect.width
-          const relH = frameRect.height / videoRect.height
-          cropW = Math.round(targetW * relW)
-          cropH = Math.round(targetH * relH)
-          cropX = Math.round(targetW * relLeft)
-          cropY = Math.round(targetH * relTop)
-          try {
-            const qs = new URLSearchParams(window.location.search)
-            if (qs.get('debug') === '1') {
-              console.log('[overlay] videoRect', videoRect)
-              console.log('[overlay] frameRect', frameRect)
-              console.log('[overlay] rel', { relLeft, relTop, relW, relH })
-              console.log('[overlay] crop', { cropX, cropY, cropW, cropH, targetW, targetH })
-            }
-          } catch (_) {}
-        } else {
-          // fallback: centro aproximado (ROI mais estreita para acelerar)
-          cropW = Math.round(targetW * 0.75)
-          cropH = Math.round(targetH * 0.40)
-          cropX = Math.round((targetW - cropW) / 2)
-          cropY = Math.round((targetH - cropH) / 2)
-        }
+      {
+        const cropW = Math.round(targetW * 0.75)
+        const cropH = Math.round(targetH * 0.40)
+        const cropX = Math.round((targetW - cropW) / 2)
+        const cropY = Math.round((targetH - cropH) / 2)
         const cropCanvas = document.createElement('canvas')
         cropCanvas.width = cropW
         cropCanvas.height = cropH
@@ -206,7 +163,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         cctx.drawImage(srcCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH)
         frameCanvas = cropCanvas
       }
-      const jpegQuality = fastMode ? (isAndroid ? 0.80 : 0.86) : (isAndroid ? 0.88 : 0.96)
+      const jpegQuality = isAndroid ? 0.80 : 0.86
       let blob = await new Promise(resolve => frameCanvas.toBlob(resolve, 'image/jpeg', jpegQuality))
       if (!blob) {
         const dataUrl = frameCanvas.toDataURL('image/jpeg', 0.9)
@@ -427,7 +384,6 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
   useEffect(() => {
     if (!active || busy || !ready) return
     const video = videoRef.current
-    // Preferir requestVideoFrameCallback quando disponível para sincronizar com o vídeo
     if (video && typeof video.requestVideoFrameCallback === 'function') {
       let handle
       const tick = () => {
@@ -443,11 +399,10 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         } catch (_) {}
       }
     }
-    // Fallback por timeout
-    const t = setTimeout(() => capture(), (fastMode ? 250 : 800))
+    const t = setTimeout(() => capture(), 250)
     timerRef.current = t
     return () => clearTimeout(t)
-  }, [active, busy, ready, procToggle, sendFullFrame, fastMode])
+  }, [active, busy, ready])
 
   useEffect(() => {
     return () => {
@@ -467,25 +422,10 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       <div className="actions-center" style={{ gap: 8, marginBottom: 8 }}>
         <button className="button" onClick={active ? stop : start}>{active ? 'Parar Leitura' : 'Ler Placas'}</button>
         <button className="button" onClick={toggleTorch} disabled={!ready}>Lanterna {torchOn ? 'On' : 'Off'}</button>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <input type="checkbox" checked={fastMode} onChange={e => setFastMode(e.target.checked)} />
-          Modo rápido
-        </label>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <input type="checkbox" checked={sendFullFrame} onChange={e => setSendFullFrame(e.target.checked)} />
-          Enviar quadro inteiro
-        </label>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <input type="checkbox" checked={procToggle} onChange={e => setProcToggle(e.target.checked)} />
-          Pré-processar
-        </label>
         <span className="chip" style={{ background: '#eef' }}>Status: {status}</span>
       </div>
       <div className="video-wrap" style={{ display: 'flex', justifyContent: 'center', position: 'relative' }}>
         <video ref={videoRef} autoPlay muted playsInline className="video" style={{ maxWidth: '100%', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.2)' }} />
-        <div className="overlay">
-          <div className="frame" ref={frameRef} onClick={toggleActive} style={{ cursor: 'pointer' }} />
-        </div>
         <canvas ref={canvasRef} style={{ display: 'none' }} />
       </div>
     </div>
