@@ -11,11 +11,18 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
   const [status, setStatus] = useState('aguardando')
   const [procToggle, setProcToggle] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
+  const [torchSupported, setTorchSupported] = useState(false)
   const [sendFullFrame, setSendFullFrame] = useState(true)
   const isAndroid = /Android/i.test(navigator.userAgent)
   const frameRef = useRef(null)
   // Add fast mode state and behavior
   const [fastMode, setFastMode] = useState(isAndroid)
+  
+  // Constantes de ROI compartilhadas (usadas no recorte e no overlay visual)
+  const ROI_WIDTH = 0.55  // 55% da tela
+  const ROI_HEIGHT = 0.26 // 26% da tela
+  const ROI_CX = 0.50     // centro horizontal
+  const ROI_CY = 0.60     // mais baixo, onde ficam as placas
   useEffect(() => { if (fastMode) setSendFullFrame(false) }, [fastMode])
   const start = async () => {
     try {
@@ -33,6 +40,11 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       videoRef.current.srcObject = stream
       trackRef.current = stream.getVideoTracks && stream.getVideoTracks()[0]
       await videoRef.current.play()
+      // Detectar suporte à lanterna
+      try {
+        const caps = trackRef.current && trackRef.current.getCapabilities && trackRef.current.getCapabilities()
+        setTorchSupported(!!(caps && caps.torch))
+      } catch (_) { setTorchSupported(false) }
       setReady(true)
       setStatus('lendo')
     } catch (e) {
@@ -58,8 +70,14 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         try { vid.pause() } catch (_) {}
         try { vid.srcObject = null } catch (_) {}
       }
-      // Garantir que a lanterna desligue ao parar
-      try { if (track && track.applyConstraints) track.applyConstraints({ advanced: [{ torch: false }] }) } catch (_) {}
+      // Garantir que a lanterna desligue ao parar (apenas se suportado)
+      try {
+        const caps = track && track.getCapabilities && track.getCapabilities()
+        if (track && track.applyConstraints && caps && caps.torch) {
+          track.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {})
+        }
+      } catch (_) {}
+      setTorchSupported(false)
       setTorchOn(false)
     } catch (_) {}
   }
@@ -73,66 +91,46 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
     const t = trackRef.current
     try {
       const desired = !torchOn
-      // 1) Tentar applyConstraints com/sem checagem de capabilities
-      try {
-        const caps = t && t.getCapabilities && t.getCapabilities()
-        if (!caps || typeof caps.torch === 'undefined') {
+      const caps = t && t.getCapabilities && t.getCapabilities()
+      const supportsTorch = !!(caps && caps.torch)
+      if (t && t.applyConstraints && supportsTorch) {
+        try {
           await t.applyConstraints({ advanced: [{ torch: desired }] })
-        } else if (caps.torch) {
-          await t.applyConstraints({ advanced: [{ torch: desired }] })
+          const settings = t && t.getSettings && t.getSettings()
+          if (settings && typeof settings.torch !== 'undefined') {
+            setTorchOn(!!settings.torch)
+          } else {
+            setTorchOn(desired)
+          }
+        } catch (_) {
+          setTorchOn(desired)
         }
-      } catch (_) {}
-      // 2) Verificar via getSettings
-      try {
-        const settings = t && t.getSettings && t.getSettings()
-        if (settings && typeof settings.torch !== 'undefined') {
-          setTorchOn(!!settings.torch)
-          return
-        }
-      } catch (_) {}
-      // 3) Fallback: tentar ImageCapture.setOptions
-      try {
-        // Alguns dispositivos expõem torch via ImageCapture
-        if (window.ImageCapture && t) {
-          const ic = new ImageCapture(t)
-          try {
-            const pc = ic.getPhotoCapabilities && await ic.getPhotoCapabilities()
-            if (pc && pc.torch) {
-              await (ic.setOptions ? ic.setOptions({ torch: desired }) : Promise.resolve())
-            }
-          } catch (_) {}
-        }
-      } catch (_) {}
-      // 4) Último recurso: confiar no estado desejado
-      setTorchOn(desired)
+      } else {
+        // Torch não suportada; evitar OverconstrainedError
+        setTorchOn(false)
+      }
     } catch (_e) {}
   }
 
   const ensureTorchOn = async () => {
     const t = trackRef.current
     try {
-      const desired = true
-      try { await t.applyConstraints({ advanced: [{ torch: desired }] }) } catch (_) {}
-      try {
-        const settings = t && t.getSettings && t.getSettings()
-        if (settings && typeof settings.torch !== 'undefined') {
-          setTorchOn(!!settings.torch)
-          return !!settings.torch
-        }
-      } catch (_) {}
-      try {
-        if (window.ImageCapture && t) {
-          const ic = new ImageCapture(t)
-          const pc = ic.getPhotoCapabilities && await ic.getPhotoCapabilities()
-          if (pc && pc.torch) {
-            await (ic.setOptions ? ic.setOptions({ torch: desired }) : Promise.resolve())
-            setTorchOn(true)
-            return true
+      const caps = t && t.getCapabilities && t.getCapabilities()
+      const supportsTorch = !!(caps && caps.torch)
+      if (t && t.applyConstraints && supportsTorch) {
+        try { await t.applyConstraints({ advanced: [{ torch: true }] }) } catch (_) {}
+        try {
+          const settings = t && t.getSettings && t.getSettings()
+          if (settings && typeof settings.torch !== 'undefined') {
+            setTorchOn(!!settings.torch)
+            return !!settings.torch
           }
-        }
-      } catch (_) {}
-      setTorchOn(true)
-      return true
+        } catch (_) {}
+        setTorchOn(true)
+        return true
+      }
+      setTorchOn(false)
+      return false
     } catch (_e) { return false }
   }
 
@@ -154,11 +152,6 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       // ROI fixa menor e horizontal para focar apenas na região da placa
        let frameCanvas = srcCanvas
        {
-         // Valores obrigatórios
-         const ROI_WIDTH = 0.55  // 55% da tela
-         const ROI_HEIGHT = 0.26 // 26% da tela
-         const ROI_CX = 0.50     // centro horizontal
-         const ROI_CY = 0.60     // mais baixo, onde ficam as placas
          // Dimensões do recorte
          const cropW = Math.round(targetW * ROI_WIDTH)
          const cropH = Math.round(targetH * ROI_HEIGHT)
@@ -444,14 +437,31 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
     <div>
       <div className="actions-center" style={{ gap: 8, marginBottom: 8 }}>
         <button className="button" onClick={active ? stop : start}>{active ? 'Parar Leitura' : 'Ler Placas'}</button>
-        <button className="button" onClick={toggleTorch} disabled={!ready}>Lanterna {torchOn ? 'On' : 'Off'}</button>
+        <button className="button" onClick={toggleTorch} disabled={!ready || !torchSupported} title={torchSupported ? 'Lanterna disponível' : 'Lanterna não suportada'}>
+          Lanterna {torchOn ? 'On' : 'Off'}
+        </button>
         <span className="chip" style={{ background: '#eef' }}>Status: {status}</span>
       </div>
       <div className="video-wrap" style={{ display: 'flex', justifyContent: 'center', position: 'relative' }}>
         <video ref={videoRef} autoPlay muted playsInline className="video" style={{ maxWidth: '100%', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.2)' }} />
         <canvas ref={canvasRef} style={{ display: 'none' }} />
-        {/* Ponto de foco para posicionar a placa: ROI_CX=0.50, ROI_CY=0.60 */}
-        <div style={{ position: 'absolute', left: '50%', top: '60%', transform: 'translate(-50%, -50%)', width: 12, height: 12, borderRadius: '50%', background: '#ff3b30', boxShadow: '0 0 0 2px rgba(255,59,48,0.5)', pointerEvents: 'none' }} title="Posicione a placa aqui" />
+        {/* Retângulo de foco para encaixar a placa (alinhado à ROI) */}
+        <div
+          style={{
+            position: 'absolute',
+            left: `${ROI_CX * 100}%`,
+            top: `${ROI_CY * 100}%`,
+            transform: 'translate(-50%, -50%)',
+            width: `${ROI_WIDTH * 100}%`,
+            height: `${ROI_HEIGHT * 100}%`,
+            border: '3px solid #22c55e',
+            borderRadius: 6,
+            background: 'rgba(34, 197, 94, 0.08)',
+            boxShadow: '0 0 0 2px rgba(34,197,94,0.25)',
+            pointerEvents: 'none'
+          }}
+          title="Encaixe a placa dentro deste retângulo"
+        />
       </div>
     </div>
   )
