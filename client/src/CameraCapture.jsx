@@ -143,46 +143,72 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const video = videoRef.current
       const w = video.videoWidth || 640
       const h = video.videoHeight || 480
-      const targetW = Math.min(isAndroid ? 640 : 800, w)
+      // maxWidth fixo para acelerar bytes
+      const targetW = Math.min(720, w)
       const targetH = Math.round(targetW * (h / w))
       const srcCanvas = document.createElement('canvas')
       srcCanvas.width = targetW
       srcCanvas.height = targetH
       const sctx = srcCanvas.getContext('2d')
       sctx.drawImage(video, 0, 0, targetW, targetH)
-      // Sempre recortar ROI central estreita para focar na placa
+      // ROI fixa menor e horizontal para focar apenas na região da placa
       let frameCanvas = srcCanvas
       {
-        // Defaults mais apertados
-        let roiW = 0.65, roiH = 0.32, roiCenterY = 0.58
-        try {
-          const qs = new URLSearchParams(window.location.search)
-          const p = qs.get('roi') // formato: w=0.65,h=0.32,cy=0.58
-          if (p) {
-            const parts = p.split(',')
-            for (const part of parts) {
-              const [k,v] = part.split('=')
-              const num = parseFloat(v)
-              if (k === 'w' && num > 0.1 && num < 0.95) roiW = num
-              if (k === 'h' && num > 0.1 && num < 0.95) roiH = num
-              if (k === 'cy' && num > 0.1 && num < 0.95) roiCenterY = num
-            }
-          }
-        } catch (_) {}
-        const cropW = Math.round(targetW * roiW)
-        const cropH = Math.round(targetH * roiH)
-        const cropX = Math.round((targetW - cropW) / 2)
-        const desiredCenterY = Math.round(targetH * roiCenterY)
-        const initialY = desiredCenterY - Math.round(cropH / 2)
-        const cropY = Math.max(0, Math.min(targetH - cropH, initialY))
-        const cropCanvas = document.createElement('canvas')
-        cropCanvas.width = cropW
-        cropCanvas.height = cropH
-        const cctx = cropCanvas.getContext('2d')
-        cctx.drawImage(srcCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH)
-        frameCanvas = cropCanvas
+      // Defaults mais apertados
+      // let roiW = 0.65, roiH = 0.32, roiCenterY = 0.58
+      // try {
+      //   const qs = new URLSearchParams(window.location.search)
+      //   const p = qs.get('roi') // formato: w=0.65,h=0.32,cy=0.58
+      //   if (p) {
+      //     const parts = p.split(',')
+      //     for (const part of parts) {
+      //       const [k,v] = part.split('=')
+      //       const num = parseFloat(v)
+      //       if (k === 'w' && num > 0.1 && num < 0.95) roiW = num
+      //       if (k === 'h' && num > 0.1 && num < 0.95) roiH = num
+      //       if (k === 'cy' && num > 0.1 && num < 0.95) roiCenterY = num
+      //     }
+      //   }
+      // } catch (_) {}
+      // const cropW = Math.round(targetW * roiW)
+      // const cropH = Math.round(targetH * roiH)
+      // const cropX = Math.round((targetW - cropW) / 2)
+      // const desiredCenterY = Math.round(targetH * roiCenterY)
+      // const initialY = desiredCenterY - Math.round(cropH / 2)
+      // const cropY = Math.max(0, Math.min(targetH - cropH, initialY))
+      // Valores obrigatórios
+      // const ROI_WIDTH = 0.55  // 55% da tela
+      // const ROI_HEIGHT = 0.26 // 26% da tela
+      // const ROI_CX = 0.50     // centro horizontal
+      // const ROI_CY = 0.60     // mais baixo, onde ficam as placas
+      // // Dimensões do recorte
+      // const cropW = Math.round(targetW * ROI_WIDTH)
+      // const cropH = Math.round(targetH * ROI_HEIGHT)
+      // // Centro desejado em pixels
+      // const desiredCenterX = Math.round(targetW * ROI_CX)
+      // const desiredCenterY = Math.round(targetH * ROI_CY)
+      // // Coordenadas iniciais com clamp para ficar dentro da imagem
+      // const initialX = desiredCenterX - Math.round(cropW / 2)
+      // const initialY = desiredCenterY - Math.round(cropH / 2)
+      // const cropX = Math.max(0, Math.min(targetW - cropW, initialX))
+      // const cropY = Math.max(0, Math.min(targetH - cropH, initialY))
+      // // Desenhar o retângulo da ROI no canvas de origem (para debug, sem alterar layout)
+      // try {
+      //   sctx.save()
+      //   sctx.strokeStyle = '#ff0000'
+      //   sctx.lineWidth = 2
+      //   sctx.strokeRect(cropX + 0.5, cropY + 0.5, cropW - 1, cropH - 1)
+      //   sctx.restore()
+      // } catch (_) {}
+      const cropCanvas = document.createElement('canvas')
+      cropCanvas.width = cropW
+      cropCanvas.height = cropH
+      const cctx = cropCanvas.getContext('2d')
+      cctx.drawImage(srcCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH)
+      frameCanvas = cropCanvas
       }
-      const jpegQuality = isAndroid ? 0.75 : 0.82
+      // Qualidade fixa para reduzir peso
+      const jpegQuality = 0.70
       let blob = await new Promise(resolve => frameCanvas.toBlob(resolve, 'image/jpeg', jpegQuality))
       if (!blob) {
         const dataUrl = frameCanvas.toDataURL('image/jpeg', 0.9)
