@@ -142,7 +142,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       const video = videoRef.current
       const w = video.videoWidth || 640
       const h = video.videoHeight || 480
-      const targetW = Math.min(isAndroid ? (fastMode ? 864 : 1024) : (fastMode ? 960 : 1280), w)
+      const targetW = Math.min(isAndroid ? (fastMode ? 720 : 1024) : (fastMode ? 900 : 1280), w)
       const targetH = Math.round(targetW * (h / w))
       const srcCanvas = document.createElement('canvas')
       srcCanvas.width = targetW
@@ -193,9 +193,9 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
             }
           } catch (_) {}
         } else {
-          // fallback: centro aproximado
-          cropW = Math.round(targetW * 0.85)
-          cropH = Math.round(targetH * 0.55)
+          // fallback: centro aproximado (ROI mais estreita para acelerar)
+          cropW = Math.round(targetW * 0.75)
+          cropH = Math.round(targetH * 0.40)
           cropX = Math.round((targetW - cropW) / 2)
           cropY = Math.round((targetH - cropH) / 2)
         }
@@ -206,7 +206,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         cctx.drawImage(srcCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH)
         frameCanvas = cropCanvas
       }
-      const jpegQuality = fastMode ? (isAndroid ? 0.84 : 0.88) : (isAndroid ? 0.88 : 0.96)
+      const jpegQuality = fastMode ? (isAndroid ? 0.80 : 0.86) : (isAndroid ? 0.88 : 0.96)
       let blob = await new Promise(resolve => frameCanvas.toBlob(resolve, 'image/jpeg', jpegQuality))
       if (!blob) {
         const dataUrl = frameCanvas.toDataURL('image/jpeg', 0.9)
@@ -426,7 +426,25 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
 
   useEffect(() => {
     if (!active || busy || !ready) return
-    const t = setTimeout(() => capture(), (fastMode ? 400 : 800))
+    const video = videoRef.current
+    // Preferir requestVideoFrameCallback quando disponível para sincronizar com o vídeo
+    if (video && typeof video.requestVideoFrameCallback === 'function') {
+      let handle
+      const tick = () => {
+        if (!busy) capture()
+        handle = video.requestVideoFrameCallback(tick)
+      }
+      handle = video.requestVideoFrameCallback(tick)
+      return () => {
+        try {
+          if (handle && typeof video.cancelVideoFrameCallback === 'function') {
+            video.cancelVideoFrameCallback(handle)
+          }
+        } catch (_) {}
+      }
+    }
+    // Fallback por timeout
+    const t = setTimeout(() => capture(), (fastMode ? 250 : 800))
     timerRef.current = t
     return () => clearTimeout(t)
   }, [active, busy, ready, procToggle, sendFullFrame, fastMode])
