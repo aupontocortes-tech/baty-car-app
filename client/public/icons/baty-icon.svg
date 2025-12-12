@@ -5,10 +5,10 @@
   <circle cx="256" cy="256" r="230" fill="#2f86d3" stroke="#0f2746" stroke-width="32"/>
 
   <!-- Letra B branca, grande e centralizada na metade superior -->
-  <text x="256" y="176" font-family="Inter, Arial, sans-serif" font-size="210" font-weight="800" text-anchor="middle" fill="#ffffff">B</text>
+  <text x="256" y="168" font-family="Inter, Arial, sans-serif" font-size="210" font-weight="800" text-anchor="middle" fill="#ffffff">B</text>
 
   <!-- Carro navy simplificado, com faróis e grade brancos -->
-  <g fill="#0f2746" stroke="none" transform="translate(0,16)">
+  <g fill="#0f2746" stroke="none" transform="translate(0,-18) scale(1,1.18)">
     <!-- Base do carro -->
     <path d="M148 330h216c14 0 26 12 26 26v36c0 8-6 14-14 14H136c-8 0-14-6-14-14v-36c0-14 12-26 26-26z"/>
     <!-- Curva do capô/parabrisas -->
@@ -21,7 +21,7 @@
     <circle cx="320" cy="378" r="12" fill="#ffffff"/>
     <!-- Grade frontal -->
     <rect x="226" y="370" width="60" height="12" rx="6" fill="#ffffff"/>
-    <!-- Parabrisa branco -->
-    <rect x="204" y="334" width="104" height="32" rx="10" fill="#ffffff"/>
+    <!-- Parabrisa branco (mais alto para evitar aparência achatada) -->
+    <rect x="204" y="334" width="104" height="40" rx="10" fill="#ffffff"/>
   </g>
 </svg>
