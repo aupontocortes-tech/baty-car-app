@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import CameraCapture from './CameraCapture'
 import ResultsTable from './ResultsTable'
+import { initDB, upsertPlate, getAllPlates, searchPlatesByPrefix } from './db'
  
 export default function App() {
   const [records, setRecords] = useState([])
@@ -148,6 +149,16 @@ export default function App() {
         acceptedMode = 'relaxed'
       }
     }
+    // Boost using local memory when confidence is low but plate is known
+    if (!best && valid.length > 0 && knownSet.size > 0) {
+      const knownCandidate = valid
+        .filter(v => knownSet.has(v.plate))
+        .sort((a, b) => b.confidence - a.confidence)[0]
+      if (knownCandidate) {
+        best = { plate: knownCandidate.plate, confidence: knownCandidate.confidence }
+        acceptedMode = 'boosted'
+      }
+    }
 
     if (best) {
       const row = { plate: best.plate, confidence: best.confidence, region: 'br', timestamp: tsStr }
@@ -160,6 +171,17 @@ export default function App() {
       // Coleta para planilha LAVA/LOJA conforme seleção atual
       if (activeCollect === 'lava') setLavaList(prev => [...prev, best.plate])
       else if (activeCollect === 'loja') setLojaList(prev => [...prev, best.plate])
+      // Persist in local DB
+      if (dbh) {
+        try {
+          upsertPlate(dbh, best.plate, 'recognize')
+          setKnownPlates(prev => {
+            const exists = prev.some(x => (x.plate || x) === best.plate)
+            if (exists) return prev.map(x => x.plate === best.plate ? { ...x, count: (x.count || 0) + 1, lastSeen: tsStr, source: 'recognize' } : x)
+            return [{ plate: best.plate, count: 1, lastSeen: tsStr, source: 'recognize' }, ...prev]
+          })
+        } catch (_) {}
+      }
       beep()
       setSuccessPlate(best.plate)
       setTimeout(() => setSuccessPlate(''), 900)
@@ -224,6 +246,17 @@ export default function App() {
     const normalize = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
     const plate = normalize(manualPlate).slice(0, 7)
     if (!plate) return
+    // Persist and update memory immediately
+    if (dbh) {
+      try {
+        upsertPlate(dbh, plate, 'manual')
+        setKnownPlates(prev => {
+          const exists = prev.some(x => (x.plate || x) === plate)
+          if (exists) return prev.map(x => x.plate === plate ? { ...x, count: (x.count || 0) + 1, lastSeen: tsStr, source: 'manual' } : x)
+          return [{ plate, count: 1, lastSeen: tsStr, source: 'manual' }, ...prev]
+        })
+      } catch (_) {}
+    }
     startFlowForPlate(plate, tsStr)
     setManualPlate('')
   }
@@ -395,6 +428,16 @@ export default function App() {
               <input type="text" placeholder="Digitar placa (AAA1A23)" value={manualPlate} onChange={e => setManualPlate(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
               <button className="button" onClick={handleManualRegister} disabled={!manualPlate}>Registrar manual</button>
             </div>
+            {/* Suggestions from local memory */}
+            {manualPlate && suggestions && suggestions.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                {suggestions.map(p => (
+                  <button key={p} className="chip" onClick={() => setManualPlate(p)} title="Usar sugestão">
+                    {p}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="card" style={{ marginTop: 12 }}>
             <div className="badge">Estatísticas</div>
