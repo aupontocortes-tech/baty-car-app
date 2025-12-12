@@ -372,8 +372,8 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         clearTimeout(timeoutId2)
       }
 
-      // 2) multipart para /api/recognize (mesmo domínio ou override)
-      if (!best && !preferFastApiOnly && fastMode) {
+      // 2) multipart para /api/recognize (desligado)
+      if (false) {
         const controllerBytesFast = new AbortController()
         const timeoutIdBytesFast = setTimeout(() => controllerBytesFast.abort(), timeoutMs)
         const uBytesFast = `${apiOriginBase}/api/recognize-bytes?region=${encodeURIComponent(regionParam)}`
@@ -396,8 +396,8 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         clearTimeout(timeoutIdBytesFast)
       }
 
-      // 2) multipart para /api/recognize (mesmo domínio ou override)
-      if (!best && !preferFastApiOnly) {
+      // 2) multipart para /api/recognize (desligado)
+      if (false) {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
         const u1 = `${apiOriginBase}/api/recognize?region=${encodeURIComponent(regionParam)}`
@@ -422,8 +422,8 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         clearTimeout(timeoutId)
       }
 
-      // 3) bytes para /api/recognize-bytes (mesmo domínio ou override)
-      if (!best && !preferFastApiOnly && !fastMode) {
+      // 3) bytes para /api/recognize-bytes (desligado)
+      if (false) {
         const controller3 = new AbortController()
         const timeoutId3 = setTimeout(() => controller3.abort(), timeoutMs)
         const u3 = `${apiOriginBase}/api/recognize-bytes?region=${encodeURIComponent(regionParam)}`
