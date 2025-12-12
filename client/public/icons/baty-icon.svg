@@ -1,27 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Baty Car App icon: círculo azul, B branco, carro navy -->
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <defs>
-    <radialGradient id="bg" cx="50%" cy="50%" r="60%">
-      <stop offset="0%" stop-color="#3aa0ff"/>
-      <stop offset="100%" stop-color="#1e6fe6"/>
-    </radialGradient>
-  </defs>
-  <circle cx="256" cy="256" r="230" fill="url(#bg)" stroke="#0f2b44" stroke-width="26"/>
-  <g fill="#0f2b44">
-    <path d="M160 168c0-36 28-64 64-64h64c36 0 64 28 64 64v24c0 4-4 8-8 8H168c-4 0-8-4-8-8v-24zm38 166c0-7 6-12 13-12h90c7 0 13 5 13 12v12c0 4-3 8-7 8H205c-4 0-7-4-7-8v-12z" opacity="0.0"/>
-    <!-- Letter B -->
-    <text x="256" y="210" font-family="Inter, Arial, sans-serif" font-size="180" font-weight="700" text-anchor="middle" dominant-baseline="middle" fill="#ffffff">B</text>
-    <!-- Car silhouette -->
-    <g transform="translate(0,40)">
-      <rect x="160" y="280" width="192" height="88" rx="22" fill="#0f2b44"/>
-      <rect x="190" y="300" width="132" height="36" rx="12" fill="#ffffff" opacity="0.15"/>
-      <circle cx="200" cy="380" r="22" fill="#0f2b44" stroke="#0f2b44"/>
-      <circle cx="312" cy="380" r="22" fill="#0f2b44" stroke="#0f2b44"/>
-      <circle cx="200" cy="352" r="16" fill="#ffffff"/>
-      <circle cx="312" cy="352" r="16" fill="#ffffff"/>
-      <rect x="228" y="344" width="56" height="12" rx="6" fill="#ffffff"/>
-      <rect x="180" y="260" width="152" height="32" rx="10" fill="#0f2b44"/>
-      <path d="M180 260c20-24 44-44 96-44s76 20 96 44" fill="none" stroke="#0f2b44" stroke-width="20" stroke-linecap="round"/>
-    </g>
+  <!-- Fundo circular azul com borda navy -->
+  <circle cx="256" cy="256" r="230" fill="#2f86d3" stroke="#0d2a4a" stroke-width="26"/>
+
+  <!-- Letra B branca centralizada no terço superior -->
+  <text x="256" y="180" font-family="Inter, Arial, sans-serif" font-size="200" font-weight="700" text-anchor="middle" fill="#ffffff">B</text>
+
+  <!-- Carro minimalista navy, com faróis e grade brancos -->
+  <g fill="#0d2a4a" stroke="none" transform="translate(0,20)">
+    <!-- carro base -->
+    <path d="M172 330c0-34 28-62 62-62h44c34 0 62 28 62 62v64c0 6-5 11-11 11H183c-6 0-11-5-11-11v-64z"/>
+    <!-- para-choque/topo arredondado -->
+    <path d="M176 314c26-28 54-42 80-42s54 14 80 42" fill="none" stroke="#0d2a4a" stroke-width="18" stroke-linecap="round"/>
+    <!-- rodas (sombra) -->
+    <circle cx="206" cy="404" r="22" fill="#0d2a4a"/>
+    <circle cx="306" cy="404" r="22" fill="#0d2a4a"/>
+    <!-- faróis -->
+    <circle cx="206" cy="382" r="14" fill="#ffffff"/>
+    <circle cx="306" cy="382" r="14" fill="#ffffff"/>
+    <!-- grade -->
+    <rect x="228" y="374" width="56" height="12" rx="6" fill="#ffffff"/>
+    <!-- parabrisas branco -->
+    <rect x="196" y="336" width="120" height="34" rx="10" fill="#ffffff"/>
   </g>
 </svg>
