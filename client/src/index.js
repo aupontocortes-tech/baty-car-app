@@ -8,8 +8,17 @@ const root = createRoot(container)
 root.render(<App />)
 try { console.log('render-start') } catch (_e) {}
 
-if ('serviceWorker' in navigator) {
+if (process.env.NODE_ENV === 'production' && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {})
   })
+} else if ('serviceWorker' in navigator) {
+  try {
+    const fn = navigator.serviceWorker.getRegistrations
+    if (typeof fn === 'function') {
+      fn.call(navigator.serviceWorker).then(rs => {
+        try { rs.forEach(r => r.unregister()) } catch (_) {}
+      }).catch(() => {})
+    }
+  } catch (_) {}
 }
