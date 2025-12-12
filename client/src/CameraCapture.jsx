@@ -143,12 +143,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       if (baseDistRef.current == null) { baseDistRef.current = dist; baseScaleRef.current = pinchScale }
       const nextScale = Math.max(pinchMin, Math.min(pinchMax, baseScaleRef.current * (dist / baseDistRef.current)))
       setPinchScale(nextScale)
-      const norm = getNormalizedFromClient(centerX, centerY)
-      setPinchCenter(norm)
       scheduleApplyZoom(nextScale)
-    } else if (vals.length === 1 && pinchScale > 1) {
-      const norm = getNormalizedFromClient(vals[0].x, vals[0].y)
-      setPinchCenter(norm)
     }
   }
   const onPointerUp = (e) => {
@@ -220,18 +215,18 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       sctx.drawImage(video, 0, 0, targetW, targetH)
       // ROI fixa menor e horizontal para focar apenas na região da placa
        let frameCanvas = srcCanvas
-       {
-         // Dimensões do recorte
-         const cropW = Math.round(targetW * (ROI_WIDTH / pinchScale))
-         const cropH = Math.round(targetH * (ROI_HEIGHT / pinchScale))
-         // Centro desejado em pixels
-         const desiredCenterX = Math.round(targetW * (pinchCenter?.x ?? ROI_CX))
-         const desiredCenterY = Math.round(targetH * (pinchCenter?.y ?? ROI_CY))
-         // Coordenadas iniciais com clamp para ficar dentro da imagem
-         const initialX = desiredCenterX - Math.round(cropW / 2)
-         const initialY = desiredCenterY - Math.round(cropH / 2)
-         const cropX = Math.max(0, Math.min(targetW - cropW, initialX))
-         const cropY = Math.max(0, Math.min(targetH - cropH, initialY))
+      {
+        // Dimensões do recorte
+        const cropW = Math.round(targetW * ROI_WIDTH)
+        const cropH = Math.round(targetH * ROI_HEIGHT)
+        // Centro desejado em pixels
+        const desiredCenterX = Math.round(targetW * ROI_CX)
+        const desiredCenterY = Math.round(targetH * ROI_CY)
+        // Coordenadas iniciais com clamp para ficar dentro da imagem
+        const initialX = desiredCenterX - Math.round(cropW / 2)
+        const initialY = desiredCenterY - Math.round(cropH / 2)
+        const cropX = Math.max(0, Math.min(targetW - cropW, initialX))
+        const cropY = Math.max(0, Math.min(targetH - cropH, initialY))
          // Desenhar o retângulo da ROI no canvas de origem (para debug, sem alterar layout)
          try {
            sctx.save()
@@ -283,7 +278,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         if (qp && /^https?:\/\//i.test(qp)) fastApiBase = qp.replace(/\/+$/,'')
       } catch (_) {}
       // Ajuste: default do backend local é 5001 (não 5000)
-      let apiOriginBase = (isDevCRA ? 'http://localhost:5001' : origin).replace(/\/+$/,'')
+      let apiOriginBase = origin.replace(/\/+$/,'')
       // Override de API base via env (REACT_APP_API_BASE) e via query (?api=https://...)
       try {
         const envApiBaseRaw = (process.env.REACT_APP_API_BASE || '').trim()
@@ -307,7 +302,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       } catch (_) {}
       // Flag para desativar fallback e forçar FastAPI explicitamente: ?fastapionly=1
       const fastApiOnly = (() => { try { const p = new URLSearchParams(window.location.search).get('fastapionly'); return p === '1' } catch (_) { return false } })()
-      const preferFastApiOnly = !!fastApiOnly
+      const preferFastApiOnly = isDevCRA ? true : !!fastApiOnly
       // Habilitar FastAPI também no dev como fallback para evitar conexão recusada quando backend local não estiver ativo
       const shouldTryFastApi = true
 
@@ -518,11 +513,11 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         <div
           style={{
             position: 'absolute',
-            left: `${(pinchCenter?.x ?? ROI_CX) * 100}%`,
-            top: `${(pinchCenter?.y ?? ROI_CY) * 100}%`,
+            left: `${ROI_CX * 100}%`,
+            top: `${ROI_CY * 100}%`,
             transform: 'translate(-50%, -50%)',
-            width: `${(ROI_WIDTH / pinchScale) * 100}%`,
-            height: `${(ROI_HEIGHT / pinchScale) * 100}%`,
+            width: `${ROI_WIDTH * 100}%`,
+            height: `${ROI_HEIGHT * 100}%`,
             border: '3px solid #22c55e',
             borderRadius: 6,
             background: 'rgba(34, 197, 94, 0.08)',

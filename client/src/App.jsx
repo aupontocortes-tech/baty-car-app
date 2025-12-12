@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+ import React, { useEffect, useMemo, useState, useRef } from 'react'
 import CameraCapture from './CameraCapture'
 import ResultsTable from './ResultsTable'
 import { initDB, upsertPlate, getAllPlates, searchPlatesByPrefix } from './db'
@@ -17,6 +17,7 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState('')
   const [manualPlate, setManualPlate] = useState('')
   const [installEvt, setInstallEvt] = useState(null)
+  const acceptedRef = useRef(new Set())
   // Estado para entradas salvas conforme schema solicitado
   const [savedEntries, setSavedEntries] = useState([])
   const [flowActive, setFlowActive] = useState(false)
@@ -162,12 +163,13 @@ export default function App() {
 
     if (best) {
       // Bloquear placa já lida (não permitir repetição)
-      if (seen.has(best.plate)) {
+      if (seen.has(best.plate) || acceptedRef.current.has(best.plate)) {
         setErrorMsg('Placa já lida — ignorada')
         return
       }
       const row = { plate: best.plate, confidence: best.confidence, region: 'br', timestamp: tsStr }
       setRecords(prev => [row, ...prev])
+      acceptedRef.current.add(best.plate)
       setStats(prev => {
         const bp = { ...prev.byPlate }
         bp[best.plate] = (bp[best.plate] || 0) + 1
@@ -215,6 +217,7 @@ export default function App() {
     setShowExcelPreview(false)
     setSuccessPlate('')
     setErrorMsg('')
+    try { acceptedRef.current.clear() } catch (_) {}
   }
 
   const downloadExcel = async () => {
@@ -228,12 +231,14 @@ export default function App() {
       for (let i = 0; i < maxLen; i++) {
         rows.push([lavaList[i] || '', lojaList[i] || ''])
       }
+      const totalUnique = new Set([...lavaList, ...lojaList]).size
       const aoa = [
         ['BATE FISICO'],
         [dateStr],
         ['LAVA', 'LOJA'],
         ...rows,
-        [timeLabel(lavaEndTime), timeLabel(lojaEndTime)]
+        [timeLabel(lavaEndTime), timeLabel(lojaEndTime)],
+        [`Total de placas: ${totalUnique}`, '']
       ]
       const ws = XLSX.utils.aoa_to_sheet(aoa)
       ws['!cols'] = [{ wch: 12 }, { wch: 12 }]
@@ -417,6 +422,14 @@ export default function App() {
                     </tr>
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+          {showExcelPreview && (
+            <div className="card" style={{ marginTop: 8 }}>
+              <div className="badge">Resumo</div>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
+                <div className="chip">Total de placas: {Array.from(new Set([...lavaList, ...lojaList])).length}</div>
               </div>
             </div>
           )}
