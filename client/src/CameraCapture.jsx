@@ -304,7 +304,7 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       } catch (_) {}
       // Flag para desativar fallback e forçar FastAPI explicitamente: ?fastapionly=1
       const fastApiOnly = (() => { try { const p = new URLSearchParams(window.location.search).get('fastapionly'); return p === '1' } catch (_) { return false } })()
-      const preferFastApiOnly = isDevCRA ? true : !!fastApiOnly
+      const preferFastApiOnly = true
       // Habilitar FastAPI também no dev como fallback para evitar conexão recusada quando backend local não estiver ativo
       const shouldTryFastApi = true
 
