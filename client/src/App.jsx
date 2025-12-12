@@ -22,6 +22,12 @@ export default function App() {
   const [flowStep, setFlowStep] = useState('choose-order') // 'choose-order' | 'fill-loja' | 'fill-lava' | 'confirm'
   const [flowOrder, setFlowOrder] = useState(null) // 'loja-first' | 'lava-first'
   const [draftEntry, setDraftEntry] = useState({ placa: '', data: '', loja: '', lava_jato: '' })
+  // Coleta em planilha no formato LAVA/LOJA
+  const [activeCollect, setActiveCollect] = useState(null) // 'lava' | 'loja' | null
+  const [lavaList, setLavaList] = useState([])
+  const [lojaList, setLojaList] = useState([])
+  const [lavaEndTime, setLavaEndTime] = useState('')
+  const [lojaEndTime, setLojaEndTime] = useState('')
 
   useEffect(() => {
     try {
@@ -150,12 +156,15 @@ export default function App() {
         bp[best.plate] = (bp[best.plate] || 0) + 1
         return { total: prev.total + 1, byPlate: bp }
       })
+      // Coleta para planilha LAVA/LOJA conforme seleção atual
+      if (activeCollect === 'lava') setLavaList(prev => [...prev, best.plate])
+      else if (activeCollect === 'loja') setLojaList(prev => [...prev, best.plate])
       beep()
       setSuccessPlate(best.plate)
       setTimeout(() => setSuccessPlate(''), 900)
       // limpar qualquer erro anterior após sucesso
       setErrorMsg('')
-      // iniciar fluxo de cadastro conforme solicitação
+      // iniciar fluxo de cadastro conforme solicitação (mantido)
       startFlowForPlate(best.plate, tsStr)
     }
     if (debug) setDebugInfo({ items, rejections, acceptedMode })
@@ -173,17 +182,27 @@ export default function App() {
   const downloadExcel = async () => {
     try {
       const XLSX = await import('xlsx')
-      const header = ["Placa", "DataHora"]
-      const rows = records.map(r => [r.plate, r.timestamp])
-      const ws = XLSX.utils.aoa_to_sheet([header, ...rows, [], ["Total lidas", records.length]])
-      ws['!cols'] = [
-        { wch: 16 },
-        { wch: 24 }
+      const today = new Date()
+      const dateStr = today.toLocaleDateString('pt-BR')
+      const timeLabel = (t) => t ? `Hora: ${t}` : ''
+      const maxLen = Math.max(lavaList.length, lojaList.length)
+      const rows = []
+      for (let i = 0; i < maxLen; i++) {
+        rows.push([lavaList[i] || '', lojaList[i] || ''])
+      }
+      const aoa = [
+        ['BATE FISICO'],
+        [dateStr],
+        ['LAVA', 'LOJA'],
+        ...rows,
+        [timeLabel(lavaEndTime), timeLabel(lojaEndTime)]
       ]
-      ws['!autofilter'] = { ref: 'A1:B1' }
+      const ws = XLSX.utils.aoa_to_sheet(aoa)
+      ws['!cols'] = [{ wch: 12 }, { wch: 12 }]
       const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, 'Leituras')
-      XLSX.writeFile(wb, 'leituras-placas.xlsx')
+      XLSX.utils.book_append_sheet(wb, ws, 'Planilha1')
+      const fname = `BATE FISICO ${today.toISOString().slice(0,10)}.xlsx`
+      XLSX.writeFile(wb, fname)
     } catch (_e) {}
   }
 
@@ -306,7 +325,20 @@ export default function App() {
               )}
             </div>
           )}
-          {/* removed API Base UI */}
+          {/* Controle de coleta LAVA/LOJA */}
+          <div className="card" style={{ marginTop: 12 }}>
+            <div className="badge">Coleta</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+              <button className="button" style={{ background: activeCollect === 'lava' ? 'var(--blue)' : undefined }} onClick={() => setActiveCollect('lava')}>Lava Jato</button>
+              <button className="button" style={{ background: activeCollect === 'loja' ? 'var(--blue)' : undefined }} onClick={() => setActiveCollect('loja')}>Loja</button>
+              <div className="status" style={{ marginLeft: 'auto' }}>{activeCollect ? `Coletando: ${activeCollect === 'lava' ? 'Lava Jato' : 'Loja'}` : 'Selecione para iniciar'}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <button className="button muted" onClick={() => setLavaEndTime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))}>Encerrar Lava Jato</button>
+              <button className="button muted" onClick={() => setLojaEndTime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))}>Encerrar Loja</button>
+            </div>
+          </div>
+          {/* Exportar Excel */}
           <div className="card" style={{ marginTop: 12 }}>
             <div className="actions-center">
               <button className="button" onClick={downloadExcel}>Baixar Excel (.xlsx)</button>
