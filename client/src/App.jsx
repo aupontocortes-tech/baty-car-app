@@ -161,6 +161,11 @@ export default function App() {
     }
 
     if (best) {
+      // Bloquear placa já lida (não permitir repetição)
+      if (seen.has(best.plate)) {
+        setErrorMsg('Placa já lida — ignorada')
+        return
+      }
       const row = { plate: best.plate, confidence: best.confidence, region: 'br', timestamp: tsStr }
       setRecords(prev => [row, ...prev])
       setStats(prev => {
@@ -198,7 +203,19 @@ export default function App() {
     } catch (_e) {}
   }
 
-  const handleClear = () => setRecords([])
+  const handleClear = () => {
+    // Limpar tudo e esconder a prévia do Excel
+    setRecords([])
+    setStats({ total: 0, byPlate: {} })
+    setLavaList([])
+    setLojaList([])
+    setLavaEndTime('')
+    setLojaEndTime('')
+    setActiveCollect(null)
+    setShowExcelPreview(false)
+    setSuccessPlate('')
+    setErrorMsg('')
+  }
 
   const downloadExcel = async () => {
     try {
@@ -276,8 +293,10 @@ export default function App() {
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
           <div className="badge">Placas lidas: {records.length}</div>
           <div className="chips">
-            {lastPlates.map(p => (
-              <span key={p} className="chip">{p}</span>
+            {Array.from(seen).map(p => (
+              <button key={p} className="chip" title="Remover placa" onClick={() => removePlate(p)}>
+                {p}
+              </button>
             ))}
           </div>
           <button className="button muted" onClick={handleClear}>Limpar lista</button>
@@ -467,4 +486,19 @@ export default function App() {
       </div>
     </div>
   )
+}
+
+// Remover uma placa única ao clicar no chip (acima)
+const removePlate = (plate) => {
+  try {
+    const filtered = records.filter(r => r.plate !== plate)
+    setRecords(filtered)
+    // Atualiza listas LAVA/LOJA removendo a placa se existir
+    setLavaList(prev => prev.filter(p => p !== plate))
+    setLojaList(prev => prev.filter(p => p !== plate))
+    // Recalcula estatísticas básicas
+    const byPlate = {}
+    for (const r of filtered) byPlate[r.plate] = (byPlate[r.plate] || 0) + 1
+    setStats({ total: filtered.length, byPlate })
+  } catch (_) {}
 }
