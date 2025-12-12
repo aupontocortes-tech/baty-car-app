@@ -330,13 +330,20 @@ export default function App() {
           <div className="card" style={{ marginTop: 12 }}>
             <div className="badge">Coleta</div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-              <button className="button" style={{ background: activeCollect === 'lava' ? 'var(--blue)' : undefined }} onClick={() => setActiveCollect('lava')}>Lava Jato</button>
-              <button className="button" style={{ background: activeCollect === 'loja' ? 'var(--blue)' : undefined }} onClick={() => setActiveCollect('loja')}>Loja</button>
-              <div className="status" style={{ marginLeft: 'auto' }}>{activeCollect ? `Coletando: ${activeCollect === 'lava' ? 'Lava Jato' : 'Loja'}` : 'Selecione para iniciar'}</div>
+              <button className="button" style={{ background: activeCollect === 'loja' ? 'var(--blue)' : undefined }} onClick={() => { setActiveCollect('loja'); setFlowOrder('loja-first'); }}>Preencher loja</button>
+              <button className="button" style={{ background: activeCollect === 'lava' ? 'var(--blue)' : undefined }} onClick={() => { setActiveCollect('lava'); setFlowOrder('lava-first'); }}>Preencher lava jato</button>
+              <div className="status" style={{ marginLeft: 'auto' }}>
+                {activeCollect
+                  ? `Coletando: ${activeCollect === 'lava' ? 'Lava Jato' : 'Loja'}`
+                  : 'Selecione onde começar'}
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: '#5b6b84', marginTop: 6 }}>
+              Finalize a etapa atual e, em seguida, selecione a outra coluna para continuar.
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-              <button className="button muted" onClick={() => setLavaEndTime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))}>Encerrar Lava Jato</button>
-              <button className="button muted" onClick={() => setLojaEndTime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))}>Encerrar Loja</button>
+              <button className="button muted" onClick={() => { setLojaEndTime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })); setActiveCollect(null); }}>Finalizar Loja</button>
+              <button className="button muted" onClick={() => { setLavaEndTime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })); setActiveCollect(null); }}>Finalizar Lava Jato</button>
             </div>
           </div>
           {/* Exportar Excel */}
