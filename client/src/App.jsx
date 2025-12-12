@@ -305,6 +305,13 @@ export default function App() {
       } catch (_) {}
     }
     setRecords(prev => [{ plate, confidence: 100, region: 'br', timestamp: tsStr }, ...prev])
+    setStats(prev => {
+      const bp = { ...prev.byPlate }
+      bp[plate] = (bp[plate] || 0) + 1
+      return { total: prev.total + 1, byPlate: bp }
+    })
+    if (activeCollect === 'lava') setLavaList(prev => [...prev, plate])
+    else if (activeCollect === 'loja') setLojaList(prev => [...prev, plate])
     setSavedEntries(prev => [{ placa: plate, data: tsStr, loja: '', lava_jato: '' }, ...prev])
     setManualPlate('')
   }

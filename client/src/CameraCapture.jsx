@@ -283,8 +283,9 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       try {
         const envApiBaseRaw = (process.env.REACT_APP_API_BASE || '').trim()
         if (isDevCRA) {
-          // No dev, permitir qualquer override absoluto
-          if (/^https?:\/\//i.test(envApiBaseRaw)) apiOriginBase = envApiBaseRaw.replace(/\/+$/,'')
+          // Em dev, só aceitar override absoluto via env se ?node=1 estiver presente
+          const nodeFlagQS = (() => { try { const qs = new URLSearchParams(window.location.search); return qs.get('node') === '1' } catch (_) { return false } })()
+          if (/^https?:\/\//i.test(envApiBaseRaw) && nodeFlagQS) apiOriginBase = envApiBaseRaw.replace(/\/+$/,'')
         } else {
           // Em produção, só aceitar override se for o MESMO host e HTTPS (evita mixed content)
           if (/^https?:\/\//i.test(envApiBaseRaw)) {
@@ -297,8 +298,9 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         }
         const qs2 = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
         const qp2 = qs2 && qs2.get('api')
-        // Em produção, restringir override via query a HTTPS para evitar bloqueio do navegador
-        if (qp2 && (/^https:\/\//i.test(qp2) || isDevCRA)) apiOriginBase = qp2.replace(/\/+$/,'')
+        const nodeFlag = qs2 && qs2.get('node') === '1'
+        // Em produção, restringir override via query a HTTPS; em dev só aceitar override se ?node=1 estiver presente
+        if (qp2 && (/^https:\/\//i.test(qp2) || (isDevCRA && nodeFlag))) apiOriginBase = qp2.replace(/\/+$/,'')
       } catch (_) {}
       // Flag para desativar fallback e forçar FastAPI explicitamente: ?fastapionly=1
       const fastApiOnly = (() => { try { const p = new URLSearchParams(window.location.search).get('fastapionly'); return p === '1' } catch (_) { return false } })()
