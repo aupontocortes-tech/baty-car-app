@@ -1,27 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Baty Car App icon: círculo azul, B branco, carro navy -->
+<!-- Ícone oficial do BATY CAR APP: círculo azul, B branco, carro navy -->
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <!-- Fundo circular azul com borda navy -->
-  <circle cx="256" cy="256" r="230" fill="#2f86d3" stroke="#0d2a4a" stroke-width="26"/>
+  <!-- Fundo circular azul com borda navy (mais espessa, como na arte enviada) -->
+  <circle cx="256" cy="256" r="230" fill="#2f86d3" stroke="#0f2746" stroke-width="32"/>
 
-  <!-- Letra B branca centralizada no terço superior -->
-  <text x="256" y="180" font-family="Inter, Arial, sans-serif" font-size="200" font-weight="700" text-anchor="middle" fill="#ffffff">B</text>
+  <!-- Letra B branca, grande e centralizada na metade superior -->
+  <text x="256" y="176" font-family="Inter, Arial, sans-serif" font-size="210" font-weight="800" text-anchor="middle" fill="#ffffff">B</text>
 
-  <!-- Carro minimalista navy, com faróis e grade brancos -->
-  <g fill="#0d2a4a" stroke="none" transform="translate(0,20)">
-    <!-- carro base -->
-    <path d="M172 330c0-34 28-62 62-62h44c34 0 62 28 62 62v64c0 6-5 11-11 11H183c-6 0-11-5-11-11v-64z"/>
-    <!-- para-choque/topo arredondado -->
-    <path d="M176 314c26-28 54-42 80-42s54 14 80 42" fill="none" stroke="#0d2a4a" stroke-width="18" stroke-linecap="round"/>
-    <!-- rodas (sombra) -->
-    <circle cx="206" cy="404" r="22" fill="#0d2a4a"/>
-    <circle cx="306" cy="404" r="22" fill="#0d2a4a"/>
-    <!-- faróis -->
-    <circle cx="206" cy="382" r="14" fill="#ffffff"/>
-    <circle cx="306" cy="382" r="14" fill="#ffffff"/>
-    <!-- grade -->
-    <rect x="228" y="374" width="56" height="12" rx="6" fill="#ffffff"/>
-    <!-- parabrisas branco -->
-    <rect x="196" y="336" width="120" height="34" rx="10" fill="#ffffff"/>
+  <!-- Carro navy simplificado, com faróis e grade brancos -->
+  <g fill="#0f2746" stroke="none" transform="translate(0,16)">
+    <!-- Base do carro -->
+    <path d="M148 330h216c14 0 26 12 26 26v36c0 8-6 14-14 14H136c-8 0-14-6-14-14v-36c0-14 12-26 26-26z"/>
+    <!-- Curva do capô/parabrisas -->
+    <path d="M172 310c24-26 50-39 84-39s60 13 84 39" fill="none" stroke="#0f2746" stroke-width="16" stroke-linecap="round"/>
+    <!-- Rodas -->
+    <circle cx="192" cy="394" r="22"/>
+    <circle cx="320" cy="394" r="22"/>
+    <!-- Faróis -->
+    <circle cx="192" cy="378" r="12" fill="#ffffff"/>
+    <circle cx="320" cy="378" r="12" fill="#ffffff"/>
+    <!-- Grade frontal -->
+    <rect x="226" y="370" width="60" height="12" rx="6" fill="#ffffff"/>
+    <!-- Parabrisa branco -->
+    <rect x="204" y="334" width="104" height="32" rx="10" fill="#ffffff"/>
   </g>
 </svg>
