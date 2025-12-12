@@ -360,8 +360,20 @@ export default function App() {
               Finalize a etapa atual e, em seguida, selecione a outra coluna para continuar.
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-              <button className="button muted" onClick={() => { setLojaEndTime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })); setActiveCollect(null); }}>Finalizar Loja</button>
-              <button className="button muted" onClick={() => { setLavaEndTime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })); setActiveCollect(null); }}>Finalizar Lava Jato</button>
+              <button
+                className="button"
+                style={{ background: '#f28b82', color: '#ffffff', boxShadow: '0 6px 24px rgba(242, 139, 130, 0.18)' }}
+                onClick={() => { setLojaEndTime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })); setActiveCollect(null); }}
+              >
+                Finalizar Loja
+              </button>
+              <button
+                className="button"
+                style={{ background: '#f28b82', color: '#ffffff', boxShadow: '0 6px 24px rgba(242, 139, 130, 0.18)' }}
+                onClick={() => { setLavaEndTime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })); setActiveCollect(null); }}
+              >
+                Finalizar Lava Jato
+              </button>
             </div>
           </div>
           {/* Exportar Excel */}
