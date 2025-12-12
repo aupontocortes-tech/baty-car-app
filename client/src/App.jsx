@@ -31,6 +31,10 @@ export default function App() {
   const [lavaEndTime, setLavaEndTime] = useState('')
   const [lojaEndTime, setLojaEndTime] = useState('')
   const [showExcelPreview, setShowExcelPreview] = useState(false)
+  const [dbh, setDbh] = useState(null)
+  const [knownPlates, setKnownPlates] = useState([])
+  const knownSet = useMemo(() => new Set(knownPlates.map(x => x.plate || x)), [knownPlates])
+  const [suggestions, setSuggestions] = useState([])
 
   useEffect(() => {
     try {
@@ -44,6 +48,29 @@ export default function App() {
       localStorage.setItem('SAVED_ENTRIES', JSON.stringify(savedEntries))
     } catch (_) {}
   }, [savedEntries])
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const db = await initDB()
+        if (!alive) return
+        setDbh(db)
+        const all = await getAllPlates(db)
+        setKnownPlates(all)
+      } catch (_) {}
+    })()
+    return () => { alive = false }
+  }, [])
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const list = await searchPlatesByPrefix(dbh, manualPlate, 8)
+        if (alive) setSuggestions(list)
+      } catch (_) {}
+    })()
+    return () => { alive = false }
+  }, [dbh, manualPlate])
 
   const startFlowForPlate = (plate, tsStr) => {
     setDraftEntry({ placa: plate, data: tsStr, loja: '', lava_jato: '' })
@@ -277,6 +304,8 @@ export default function App() {
         })
       } catch (_) {}
     }
+    setRecords(prev => [{ plate, confidence: 100, region: 'br', timestamp: tsStr }, ...prev])
+    setSavedEntries(prev => [{ placa: plate, data: tsStr, loja: '', lava_jato: '' }, ...prev])
     setManualPlate('')
   }
   
@@ -299,7 +328,17 @@ export default function App() {
           <div className="badge">Placas lidas: {records.length}</div>
           <div className="chips">
             {Array.from(seen).map(p => (
-              <button key={p} className="chip" title="Remover placa" onClick={() => removePlate(p)}>
+              <button key={p} className="chip" title="Remover placa" onClick={() => {
+                try {
+                  const filtered = records.filter(r => r.plate !== p)
+                  setRecords(filtered)
+                  setLavaList(prev => prev.filter(x => x !== p))
+                  setLojaList(prev => prev.filter(x => x !== p))
+                  const byPlate = {}
+                  for (const r of filtered) byPlate[r.plate] = (byPlate[r.plate] || 0) + 1
+                  setStats({ total: filtered.length, byPlate })
+                } catch (_) {}
+              }}>
                 {p}
               </button>
             ))}
@@ -521,19 +560,4 @@ export default function App() {
       </div>
     </div>
   )
-}
-
-// Remover uma placa única ao clicar no chip (acima)
-const removePlate = (plate) => {
-  try {
-    const filtered = records.filter(r => r.plate !== plate)
-    setRecords(filtered)
-    // Atualiza listas LAVA/LOJA removendo a placa se existir
-    setLavaList(prev => prev.filter(p => p !== plate))
-    setLojaList(prev => prev.filter(p => p !== plate))
-    // Recalcula estatísticas básicas
-    const byPlate = {}
-    for (const r of filtered) byPlate[r.plate] = (byPlate[r.plate] || 0) + 1
-    setStats({ total: filtered.length, byPlate })
-  } catch (_) {}
 }
