@@ -299,7 +299,17 @@ export default function App() {
               </button>
             ))}
           </div>
-          <button className="button muted" onClick={handleClear}>Limpar lista</button>
+          <button
+            className="button"
+            style={{
+              background: '#f28b82',
+              color: '#ffffff',
+              boxShadow: '0 6px 24px rgba(242, 139, 130, 0.18)'
+            }}
+            onClick={handleClear}
+          >
+            Limpar lista
+          </button>
         </div>
       </div>
       <div className="row" style={{ justifyContent: 'center' }}>
