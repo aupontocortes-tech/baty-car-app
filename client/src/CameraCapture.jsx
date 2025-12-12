@@ -24,6 +24,37 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
   const ROI_CX = 0.50     // centro horizontal
   const ROI_CY = 0.55     // mais central para evitar ficar muito baixo
   useEffect(() => { if (fastMode) setSendFullFrame(false) }, [fastMode])
+  // Pinch-to-zoom state & helpers
+  const wrapRef = useRef(null)
+  const pointersRef = useRef(new Map())
+  const baseDistRef = useRef(null)
+  const baseScaleRef = useRef(1)
+  const [pinchScale, setPinchScale] = useState(1)
+  const [pinchCenter, setPinchCenter] = useState({ x: ROI_CX, y: ROI_CY })
+  const pinchMin = 1
+  const pinchMax = 4
+  const [zoomSupported, setZoomSupported] = useState(false)
+  const zoomRangeRef = useRef({ min: 1, max: 1 })
+  const zoomApplyTimerRef = useRef(null)
+  const getNormalizedFromClient = (clientX, clientY) => {
+    const rect = videoRef.current?.getBoundingClientRect()
+    if (!rect) return { x: ROI_CX, y: ROI_CY }
+    const x = (clientX - rect.left) / rect.width
+    const y = (clientY - rect.top) / rect.height
+    return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) }
+  }
+  const scheduleApplyZoom = (scale) => {
+    if (!zoomSupported) return
+    const { min, max } = zoomRangeRef.current
+    const t = trackRef.current
+    if (t && t.applyConstraints) {
+      const z = min + (max - min) * ((scale - pinchMin) / (pinchMax - pinchMin))
+      const apply = () => t.applyConstraints({ advanced: [{ zoom: Math.max(min, Math.min(max, z)) }] }).catch(() => {})
+      if (!zoomApplyTimerRef.current) {
+        zoomApplyTimerRef.current = setTimeout(() => { zoomApplyTimerRef.current = null; apply() }, 80)
+      }
+    }
+  }
   const start = async () => {
     try {
       setActive(true)
@@ -44,7 +75,15 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
       try {
         const caps = trackRef.current && trackRef.current.getCapabilities && trackRef.current.getCapabilities()
         setTorchSupported(!!(caps && caps.torch))
-      } catch (_) { setTorchSupported(false) }
+        const z = caps && caps.zoom
+        const hasZoom = !!z
+        setZoomSupported(hasZoom)
+        if (hasZoom) {
+          const min = typeof z?.min === 'number' ? z.min : 1
+          const max = typeof z?.max === 'number' ? z.max : (typeof z === 'number' ? z : 1)
+          zoomRangeRef.current = { min, max }
+        }
+      } catch (_) { setTorchSupported(false); setZoomSupported(false) }
       setReady(true)
       setStatus('lendo')
     } catch (e) {
@@ -85,6 +124,36 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
   const toggleActive = () => {
     if (active) stop()
     else start()
+  }
+
+  // Gestos de pinch/pan
+  const onPointerDown = (e) => {
+    try { wrapRef.current?.setPointerCapture?.(e.pointerId) } catch (_) {}
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+  }
+  const onPointerMove = (e) => {
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const vals = Array.from(pointersRef.current.values())
+    if (vals.length >= 2) {
+      const dx = vals[0].x - vals[1].x
+      const dy = vals[0].y - vals[1].y
+      const dist = Math.hypot(dx, dy)
+      const centerX = (vals[0].x + vals[1].x) / 2
+      const centerY = (vals[0].y + vals[1].y) / 2
+      if (baseDistRef.current == null) { baseDistRef.current = dist; baseScaleRef.current = pinchScale }
+      const nextScale = Math.max(pinchMin, Math.min(pinchMax, baseScaleRef.current * (dist / baseDistRef.current)))
+      setPinchScale(nextScale)
+      const norm = getNormalizedFromClient(centerX, centerY)
+      setPinchCenter(norm)
+      scheduleApplyZoom(nextScale)
+    } else if (vals.length === 1 && pinchScale > 1) {
+      const norm = getNormalizedFromClient(vals[0].x, vals[0].y)
+      setPinchCenter(norm)
+    }
+  }
+  const onPointerUp = (e) => {
+    pointersRef.current.delete(e.pointerId)
+    if (pointersRef.current.size < 2) { baseDistRef.current = null }
   }
 
   const toggleTorch = async () => {
@@ -153,11 +222,11 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
        let frameCanvas = srcCanvas
        {
          // Dimensões do recorte
-         const cropW = Math.round(targetW * ROI_WIDTH)
-         const cropH = Math.round(targetH * ROI_HEIGHT)
+         const cropW = Math.round(targetW * (ROI_WIDTH / pinchScale))
+         const cropH = Math.round(targetH * (ROI_HEIGHT / pinchScale))
          // Centro desejado em pixels
-         const desiredCenterX = Math.round(targetW * ROI_CX)
-         const desiredCenterY = Math.round(targetH * ROI_CY)
+         const desiredCenterX = Math.round(targetW * (pinchCenter?.x ?? ROI_CX))
+         const desiredCenterY = Math.round(targetH * (pinchCenter?.y ?? ROI_CY))
          // Coordenadas iniciais com clamp para ficar dentro da imagem
          const initialX = desiredCenterX - Math.round(cropW / 2)
          const initialY = desiredCenterY - Math.round(cropH / 2)
@@ -442,18 +511,18 @@ export default function CameraCapture({ onRecognize, onRaw, onError, previewProc
         </button>
         <span className="chip" style={{ background: '#eef' }}>Status: {status}</span>
       </div>
-      <div className="video-wrap" style={{ display: 'flex', justifyContent: 'center', position: 'relative' }}>
+      <div className="video-wrap" ref={wrapRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} style={{ display: 'flex', justifyContent: 'center', position: 'relative', touchAction: 'none' }}>
         <video ref={videoRef} autoPlay muted playsInline className="video" style={{ maxWidth: '100%', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.2)' }} />
         <canvas ref={canvasRef} style={{ display: 'none' }} />
         {/* Retângulo de foco para encaixar a placa (alinhado à ROI) */}
         <div
           style={{
             position: 'absolute',
-            left: `${ROI_CX * 100}%`,
-            top: `${ROI_CY * 100}%`,
+            left: `${(pinchCenter?.x ?? ROI_CX) * 100}%`,
+            top: `${(pinchCenter?.y ?? ROI_CY) * 100}%`,
             transform: 'translate(-50%, -50%)',
-            width: `${ROI_WIDTH * 100}%`,
-            height: `${ROI_HEIGHT * 100}%`,
+            width: `${(ROI_WIDTH / pinchScale) * 100}%`,
+            height: `${(ROI_HEIGHT / pinchScale) * 100}%`,
             border: '3px solid #22c55e',
             borderRadius: 6,
             background: 'rgba(34, 197, 94, 0.08)',
