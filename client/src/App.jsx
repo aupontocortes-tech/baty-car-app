@@ -302,8 +302,9 @@ export default function App() {
           <button
             className="button"
             style={{
-              background: '#2f86d3',
-              WebkitTextStroke: '0.8px #f28b82',
+              background: '#ffffff',
+              color: '#ffffff',
+              WebkitTextStroke: '1.2px #f28b82',
               textShadow: '1px 0 #f28b82, -1px 0 #f28b82, 0 1px #f28b82, 0 -1px #f28b82',
             }}
             onClick={handleClear}
