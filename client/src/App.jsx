@@ -187,8 +187,6 @@ export default function App() {
       setTimeout(() => setSuccessPlate(''), 900)
       // limpar qualquer erro anterior após sucesso
       setErrorMsg('')
-      // iniciar fluxo de cadastro conforme solicitação (mantido)
-      startFlowForPlate(best.plate, tsStr)
     }
     if (debug) setDebugInfo({ items, rejections, acceptedMode })
   }
@@ -257,7 +255,6 @@ export default function App() {
         })
       } catch (_) {}
     }
-    startFlowForPlate(plate, tsStr)
     setManualPlate('')
   }
   
@@ -317,48 +314,7 @@ export default function App() {
               }}
             />
           </div>
-          {/* Fluxo de cadastro flexível */}
-          {flowActive && (
-            <div className="card" style={{ marginTop: 12 }}>
-              <div className="badge">Cadastro</div>
-              {flowStep === 'choose-order' && (
-                <div style={{ marginTop: 8 }}>
-                  <div style={{ marginBottom: 8, fontWeight: 600 }}>Deseja preencher primeiro Loja ou Lava Jato?</div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="button" onClick={() => chooseOrder('loja')}>Loja primeiro</button>
-                    <button className="button" onClick={() => chooseOrder('lava')}>Lava Jato primeiro</button>
-                  </div>
-                  <div style={{ marginTop: 12, fontSize: 12, color: '#5b6b84' }}>
-                    Placa: {draftEntry.placa} • Data: {draftEntry.data}
-                  </div>
-                </div>
-              )}
-              {flowStep === 'fill-loja' && (
-                <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                  <input type="text" placeholder="Loja" value={draftEntry.loja} onChange={e => setDraftEntry(prev => ({ ...prev, loja: e.target.value }))} style={{ flex: 1, minWidth: 220 }} />
-                  <button className="button" onClick={proceedAfterLoja} disabled={!draftEntry.loja}>Continuar</button>
-                </div>
-              )}
-              {flowStep === 'fill-lava' && (
-                <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                  <input type="text" placeholder="Lava Jato" value={draftEntry.lava_jato} onChange={e => setDraftEntry(prev => ({ ...prev, lava_jato: e.target.value }))} style={{ flex: 1, minWidth: 220 }} />
-                  <button className="button" onClick={proceedAfterLava} disabled={!draftEntry.lava_jato}>Continuar</button>
-                </div>
-              )}
-              {flowStep === 'confirm' && (
-                <div style={{ marginTop: 8 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Confirmar cadastro</div>
-                  <div style={{ fontSize: 12, color: '#5b6b84', marginBottom: 8 }}>
-                    Placa: {draftEntry.placa} • Data: {draftEntry.data} • Loja: {draftEntry.loja} • Lava Jato: {draftEntry.lava_jato}
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="button" onClick={saveCurrentEntry}>Salvar</button>
-                    <button className="button" onClick={() => setFlowActive(false)}>Cancelar</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+
           {/* Controle de coleta LAVA/LOJA */}
           <div className="card" style={{ marginTop: 12 }}>
             <div className="badge">Coleta</div>
