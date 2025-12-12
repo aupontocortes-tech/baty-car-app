@@ -28,6 +28,7 @@ export default function App() {
   const [lojaList, setLojaList] = useState([])
   const [lavaEndTime, setLavaEndTime] = useState('')
   const [lojaEndTime, setLojaEndTime] = useState('')
+  const [showExcelPreview, setShowExcelPreview] = useState(false)
 
   useEffect(() => {
     try {
@@ -340,10 +341,48 @@ export default function App() {
           </div>
           {/* Exportar Excel */}
           <div className="card" style={{ marginTop: 12 }}>
-            <div className="actions-center">
+            <div className="actions-center" style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+              <button className="button muted" onClick={() => setShowExcelPreview(prev => !prev)}>
+                {showExcelPreview ? 'Ocultar prévia' : 'Prévia Excel'}
+              </button>
               <button className="button" onClick={downloadExcel}>Baixar Excel (.xlsx)</button>
             </div>
           </div>
+          {showExcelPreview && (
+            <div className="card" style={{ marginTop: 12 }}>
+              <div className="badge">Prévia da planilha</div>
+              <div style={{ overflowX: 'auto', marginTop: 8 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Segoe UI, Arial, sans-serif' }}>
+                  <thead>
+                    <tr>
+                      <th colSpan={2} style={{ background: '#bcd1f0', color: '#1f2937', fontWeight: 700, padding: 8, border: '1px solid #cbd5e1' }}>BATE FISICO</th>
+                    </tr>
+                    <tr>
+                      <th colSpan={2} style={{ background: '#e9f2ff', color: '#1f2937', padding: 6, border: '1px solid #cbd5e1' }}>
+                        {new Date().toLocaleDateString('pt-BR')}
+                      </th>
+                    </tr>
+                    <tr>
+                      <th style={{ background: '#cfe8ff', color: '#0f172a', padding: 6, border: '1px solid #cbd5e1' }}>LAVA</th>
+                      <th style={{ background: '#cfe8ff', color: '#0f172a', padding: 6, border: '1px solid #cbd5e1' }}>LOJA</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: Math.max(lavaList.length, lojaList.length) || 1 }).map((_, i) => (
+                      <tr key={i}>
+                        <td style={{ background: '#1a9e4f', color: 'white', padding: 6, border: '1px solid #cbd5e1', textAlign: 'center' }}>{lavaList[i] || ''}</td>
+                        <td style={{ background: '#1a9e4f', color: 'white', padding: 6, border: '1px solid #cbd5e1', textAlign: 'center' }}>{lojaList[i] || ''}</td>
+                      </tr>
+                    ))}
+                    <tr>
+                      <td style={{ background: '#e8f5e9', color: '#111827', padding: 6, border: '1px solid #cbd5e1', textAlign: 'center' }}>{lavaEndTime ? `Hora: ${lavaEndTime}` : ''}</td>
+                      <td style={{ background: '#e8f5e9', color: '#111827', padding: 6, border: '1px solid #cbd5e1', textAlign: 'center' }}>{lojaEndTime ? `Hora: ${lojaEndTime}` : ''}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
           <div className="card" style={{ marginTop: 12 }}>
             <div className="actions-center">
               <input type="text" placeholder="Digitar placa (AAA1A23)" value={manualPlate} onChange={e => setManualPlate(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
