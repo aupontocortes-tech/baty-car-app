@@ -264,11 +264,18 @@ export default function App() {
         [dateStr],
         ['LAVA', 'LOJA'],
         ...rows,
-        [timeLabel(lavaEndTime), timeLabel(lojaEndTime)],
-        [`Total de placas: ${totalUnique}`, '']
+        [timeLabel(lavaEndTime), timeLabel(lojaEndTime)]
       ]
       const ws = XLSX.utils.aoa_to_sheet(aoa)
       ws['!cols'] = [{ wch: 12 }, { wch: 12 }]
+      const ref = ws['!ref'] || 'A1'
+      const range = XLSX.utils.decode_range(ref)
+      range.e.r = Math.max(range.e.r, 8)
+      range.e.c = Math.max(range.e.c, 1)
+      ws['!ref'] = XLSX.utils.encode_range(range)
+      ws['A9'] = { t: 's', v: 'Total de placas:' }
+      const endRow = 3 + maxLen
+      ws['B9'] = { t: 'n', f: `COUNTA(A4:A${endRow})+COUNTA(B4:B${endRow})` }
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Planilha1')
       const fname = `BATE FISICO ${today.toISOString().slice(0,10)}.xlsx`
@@ -466,6 +473,10 @@ export default function App() {
                       <td style={{ background: '#e8f5e9', color: '#111827', padding: 6, border: '1px solid #cbd5e1', textAlign: 'center' }}>{lavaEndTime ? `Hora: ${lavaEndTime}` : ''}</td>
                       <td style={{ background: '#e8f5e9', color: '#111827', padding: 6, border: '1px solid #cbd5e1', textAlign: 'center' }}>{lojaEndTime ? `Hora: ${lojaEndTime}` : ''}</td>
                     </tr>
+                    <tr>
+                      <td style={{ background: '#ffffff', color: '#111827', padding: 6, border: '1px solid #cbd5e1', textAlign: 'right' }}>Total de placas:</td>
+                      <td style={{ background: '#ffffff', color: '#111827', padding: 6, border: '1px solid #cbd5e1', textAlign: 'center' }}>{lavaList.length + lojaList.length}</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -475,7 +486,7 @@ export default function App() {
             <div className="card" style={{ marginTop: 8 }}>
               <div className="badge">Resumo</div>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
-                <div className="chip">Total de placas: {Array.from(new Set([...lavaList, ...lojaList])).length}</div>
+                <div className="chip">Total de placas: {lavaList.length + lojaList.length}</div>
               </div>
             </div>
           )}
