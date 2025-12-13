@@ -339,10 +339,10 @@ export default function App() {
       <div className="title" style={{ textAlign: 'center' }}>BATY CAR APP</div>
       <div className="card" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <svg viewBox="0 0 240 44" style={{ height: 36 }}>
-            <circle cx="20" cy="22" r="14" fill="#0b5ea7" />
-            <circle cx="20" cy="22" r="7" fill="#ffffff" />
-            <text x="44" y="26" fill="#0b5ea7" fontSize="26" fontWeight="800" fontFamily="Segoe UI, Arial, sans-serif">unidas</text>
+          <svg viewBox="0 0 300 64" style={{ height: 56 }}>
+            <circle cx="32" cy="32" r="28" fill="#0b5ea7" />
+            <circle cx="32" cy="32" r="14" fill="#ffffff" />
+            <text x="88" y="40" fill="#0b5ea7" fontSize="26" fontWeight="800" fontFamily="Segoe UI, Arial, sans-serif">unidas</text>
           </svg>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
