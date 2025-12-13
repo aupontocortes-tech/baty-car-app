@@ -270,12 +270,13 @@ export default function App() {
       ws['!cols'] = [{ wch: 12 }, { wch: 12 }]
       const ref = ws['!ref'] || 'A1'
       const range = XLSX.utils.decode_range(ref)
-      range.e.r = Math.max(range.e.r, 8)
+      const endRow = 3 + maxLen
+      const totalRow = endRow + 2
+      range.e.r = Math.max(range.e.r, totalRow - 1)
       range.e.c = Math.max(range.e.c, 1)
       ws['!ref'] = XLSX.utils.encode_range(range)
-      ws['A9'] = { t: 's', v: 'Total de placas:' }
-      const endRow = 3 + maxLen
-      ws['B9'] = { t: 'n', f: `COUNTA(A4:A${endRow})+COUNTA(B4:B${endRow})` }
+      ws[`A${totalRow}`] = { t: 's', v: 'Total de placas:' }
+      ws[`B${totalRow}`] = { t: 'n', f: `COUNTA(A4:A${endRow})+COUNTA(B4:B${endRow})` }
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Planilha1')
       const fname = `BATE FISICO ${today.toISOString().slice(0,10)}.xlsx`
@@ -338,13 +339,6 @@ export default function App() {
       <button className="icon-button" onClick={promptInstall} title="Instalar aplicativo">⤓</button>
       <div className="title" style={{ textAlign: 'center' }}>BATY CAR APP</div>
       <div className="card" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <svg viewBox="0 0 300 64" style={{ height: 56 }}>
-            <circle cx="32" cy="32" r="28" fill="#0b5ea7" />
-            <circle cx="32" cy="32" r="14" fill="#ffffff" />
-            <text x="72" y="40" fill="#0b5ea7" fontSize="26" fontWeight="800" fontFamily="Segoe UI, Arial, sans-serif">unidas</text>
-          </svg>
-        </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
           <div className="badge">Placas lidas: {records.length}</div>
           <div className="chips">
