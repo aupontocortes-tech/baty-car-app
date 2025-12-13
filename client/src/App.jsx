@@ -338,6 +338,12 @@ export default function App() {
       <button className="icon-button" onClick={promptInstall} title="Instalar aplicativo">⤓</button>
       <div className="title" style={{ textAlign: 'center' }}>BATY CAR APP</div>
       <div className="card" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <svg viewBox="0 0 220 40" style={{ height: 32 }}>
+            <circle cx="20" cy="20" r="12" fill="#0b5ea7" />
+            <text x="40" y="25" fill="#0b5ea7" fontSize="22" fontFamily="Segoe UI, Arial, sans-serif">unidas</text>
+          </svg>
+        </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
           <div className="badge">Placas lidas: {records.length}</div>
           <div className="chips">
