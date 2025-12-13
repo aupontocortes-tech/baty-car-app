@@ -256,7 +256,7 @@ export default function App() {
       const maxLen = Math.max(lavaList.length, lojaList.length)
       const rows = []
       for (let i = 0; i < maxLen; i++) {
-        rows.push([lavaList[i] || '', lojaList[i] || ''])
+        rows.push([lavaList[i] ?? null, lojaList[i] ?? null])
       }
       const totalUnique = new Set([...lavaList, ...lojaList]).size
       const aoa = [
