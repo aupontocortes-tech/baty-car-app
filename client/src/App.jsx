@@ -342,7 +342,7 @@ export default function App() {
           <svg viewBox="0 0 300 64" style={{ height: 56 }}>
             <circle cx="32" cy="32" r="28" fill="#0b5ea7" />
             <circle cx="32" cy="32" r="14" fill="#ffffff" />
-            <text x="88" y="40" fill="#0b5ea7" fontSize="26" fontWeight="800" fontFamily="Segoe UI, Arial, sans-serif">unidas</text>
+            <text x="72" y="40" fill="#0b5ea7" fontSize="26" fontWeight="800" fontFamily="Segoe UI, Arial, sans-serif">unidas</text>
           </svg>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
